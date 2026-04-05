@@ -122,5 +122,5 @@ def model_data(ruby_server):
 @pytest.fixture(scope='session')
 def json_model(model_data):
     """Wrap model_data in JsonModel. Session-scoped — all tests share one instance."""
-    from sketchup_link.live_adapter import JsonModel
+    from blender_plugin.sketchup_link import JsonModel
     return JsonModel(model_data)

@@ -23,6 +23,10 @@ model JSON is fetched once, and JsonModel is constructed once.
 """
 
 import pytest
+import socket
+# TODO validate sync changes can be accepted by bpy
+
+from blender_plugin.sketchup_link import fetch_model_json, JsonLayer, JsonDefinitionRef
 
 
 # ===========================================================================
@@ -31,12 +35,10 @@ import pytest
 
 class TestTransport:
     def test_fetch_model_json_returns_dict(self, ruby_server):
-        from sketchup_link.live_adapter import fetch_model_json
         data = fetch_model_json(ruby_server)
         assert isinstance(data, dict)
 
     def test_fetch_model_json_has_required_keys(self, ruby_server):
-        from sketchup_link.live_adapter import fetch_model_json
         data = fetch_model_json(ruby_server)
         for key in ('model_guid', 'title', 'entities', 'materials', 'layers',
                     'component_definitions'):
@@ -46,8 +48,6 @@ class TestTransport:
         assert model_data['title'] == 'Integration Test Model'
 
     def test_fetch_model_json_raises_on_bad_path(self):
-        from sketchup_link.live_adapter import fetch_model_json
-        import socket
         with pytest.raises((OSError, ConnectionRefusedError, FileNotFoundError)):
             fetch_model_json('/tmp/sketchup-link-nonexistent.sock')
 
@@ -347,31 +347,26 @@ class TestJsonLayer:
         assert by_name['Hidden'].visible is False
 
     def test_layer_equality_same_name_different_visible(self):
-        from sketchup_link.live_adapter import JsonLayer
         l1 = JsonLayer({'name': 'Layer0', 'visible': True})
         l2 = JsonLayer({'name': 'Layer0', 'visible': False})
         assert l1 == l2
 
     def test_layer_inequality_different_name(self):
-        from sketchup_link.live_adapter import JsonLayer
         l1 = JsonLayer({'name': 'Layer0',    'visible': True})
         l2 = JsonLayer({'name': 'Furniture', 'visible': True})
         assert l1 != l2
 
     def test_layer_hash_same_for_same_name(self):
-        from sketchup_link.live_adapter import JsonLayer
         l1 = JsonLayer({'name': 'Layer0', 'visible': True})
         l2 = JsonLayer({'name': 'Layer0', 'visible': False})
         assert hash(l1) == hash(l2)
 
     def test_layers_usable_in_set_deduplication(self):
-        from sketchup_link.live_adapter import JsonLayer
         l1 = JsonLayer({'name': 'Layer0', 'visible': True})
         l2 = JsonLayer({'name': 'Layer0', 'visible': False})
         assert len({l1, l2}) == 1
 
     def test_layers_in_set_different_names(self):
-        from sketchup_link.live_adapter import JsonLayer
         layers = [
             JsonLayer({'name': 'A', 'visible': True}),
             JsonLayer({'name': 'B', 'visible': True}),
@@ -422,7 +417,6 @@ class TestComponentDefinitions:
         assert len(defs) == 1
 
     def test_component_definitions_iterable_returns_def_refs(self, json_model):
-        from sketchup_link.live_adapter import JsonDefinitionRef
         defs = list(json_model.component_definitions)
         assert all(isinstance(d, JsonDefinitionRef) for d in defs)
 
