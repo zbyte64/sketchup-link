@@ -37,6 +37,8 @@ _SERVER_RB = os.path.join(os.path.dirname(__file__), '..', 'integration', 'serve
 _SOCKET_PATH = os.path.join(tempfile.gettempdir(), 'sketchup-link-bdd-test.sock')
 _SCREENSHOT_DIR = os.path.join(os.path.dirname(__file__), 'screenshots')
 _RUN_BLENDER_PY = os.path.join(os.path.dirname(__file__), 'run_blender_assertions.py')
+_RENDER_SCREENSHOT_PY = os.path.join(os.path.dirname(__file__), 'render_screenshot.py')
+_RENDER_WIREFRAME_PY = os.path.join(os.path.dirname(__file__), 'render_wireframe_screenshot.py')
 _TCP_HOST = 'windows'
 _TCP_PORT = 9876
 
@@ -707,6 +709,70 @@ def then_screenshot_captured(request, screenshot_dir, no_screenshots):
             print(f"\nScreenshot: {output_path} ({render_info.get('size_bytes', '?')} bytes)")
         else:
             pytest.fail(f"Render script reported error: {render_info.get('message', 'unknown')}")
+    except (json.JSONDecodeError, IndexError):
+        pass  # Non-JSON output from Blender is fine; screenshot file is the ground truth
+
+@then('a wireframe screenshot is captured')
+def then_wireframe_screenshot_captured(request, screenshot_dir, no_screenshots):
+    """
+    Capture a wireframe screenshot of the Blender viewport.
+
+    In CI-safe mode (--no-screenshots), writes a placeholder.
+    In full mode, runs Blender via Docker to render a wireframe overlay PNG.
+    Temporarily applies Wireframe modifiers to all mesh objects for the render.
+    """
+    if no_screenshots:
+        placeholder_path = os.path.join(screenshot_dir, 'wireframe_placeholder.txt')
+        with open(placeholder_path, 'w') as f:
+            f.write('Wireframe screenshot placeholder (CI mode — no Blender available)\n')
+        return
+
+    # Full mode — render a real Blender wireframe screenshot
+    model_data = getattr(request.node, '_imported_model', None)
+    if model_data is None:
+        pytest.fail('No imported model data available for wireframe screenshot')
+
+    # Save model JSON to a path accessible inside the blender container
+    model_json_path = os.path.join(screenshot_dir, 'model.json')
+    with open(model_json_path, 'w') as f:
+        json.dump(model_data, f)
+
+    output_path = os.path.join(screenshot_dir, 'render_wireframe.png')
+    # Inside the container, screenshot_dir maps to /screenshots/<scenario>/
+    container_model_path = '/screenshots/' + os.path.basename(screenshot_dir) + '/model.json'
+    container_output_path = '/screenshots/' + os.path.basename(screenshot_dir) + '/render_wireframe.png'
+
+    cmd = [
+        'docker', 'compose', 'run', '--rm',
+        'blender',
+        'blender', '--background',
+        '--python', '/plugin/tests/bdd/render_wireframe_screenshot.py',
+        '--',
+        container_model_path,
+        container_output_path,
+    ]
+
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    if result.returncode != 0:
+        pytest.fail(
+            f"Blender wireframe screenshot render failed (exit {result.returncode}).\n"
+            f"stdout:\n{result.stdout}\n"
+            f"stderr:\n{result.stderr}"
+        )
+
+    # Verify screenshot was created
+    if not os.path.exists(output_path):
+        pytest.fail(f"Wireframe screenshot not created at {output_path}")
+
+    # Log render result for test report
+    try:
+        output_line = result.stdout.strip().split('\n')[-1]
+        render_info = json.loads(output_line)
+        if render_info.get('status') == 'passed':
+            print(f"\nWireframe screenshot: {output_path} ({render_info.get('size_bytes', '?')} bytes, "
+                  f"wire_thickness={render_info.get('wire_thickness', '?')})")
+        else:
+            pytest.fail(f"Wireframe render script reported error: {render_info.get('message', 'unknown')}")
     except (json.JSONDecodeError, IndexError):
         pass  # Non-JSON output from Blender is fine; screenshot file is the ground truth
 

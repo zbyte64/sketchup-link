@@ -9,19 +9,23 @@ Feature: Geometric Fidelity (TCP mode)
     When I import the model via live sync
     Then the FurnitureGroup transform is identity
     And a screenshot is captured
+    And a wireframe screenshot is captured
 
   Scenario: Face materials are correctly assigned
     When I import the model via live sync
     Then the front-face material references are correct
     And the back-face material references are correct
     And a screenshot is captured
+    And a wireframe screenshot is captured
 
   Scenario: All entities are present after import
     When I import the model via live sync
     Then the number of imported entities matches the JSON data
     And a screenshot is captured
+    And a wireframe screenshot is captured
 
   Scenario: Hidden layer entities are excluded
     When I import the model via live sync
     Then entities on hidden layers are not imported
     And a screenshot is captured
+    And a wireframe screenshot is captured
