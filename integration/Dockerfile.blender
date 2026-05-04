@@ -41,6 +41,10 @@ RUN /opt/blender-4.2.0-linux-x64/4.2/python/bin/python3.11 -m ensurepip && \
 
 # Verify Blender works
 RUN blender --version
+# Copy plugin source into image
+COPY . /plugin
+WORKDIR /plugin
+
 
 # Default: keep container alive for on-demand executor use
 CMD ["sleep", "infinity"]

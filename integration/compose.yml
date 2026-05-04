@@ -6,6 +6,7 @@ services:
       VERSION: "11"
       GPU: "Y"
       USER_PORTS: "3389,9876"
+      SKETCHUP_INSTALLER: ${SKETCHUP_INSTALLER:-./installers/SketchUp2025.exe}
     devices:
       - /dev/dri
       - /dev/kvm
@@ -19,23 +20,18 @@ services:
       - 6123:6123 # VS Code debug port
       - 9876:9876 # TCP port for sketchup-link live sync
     volumes:
-      - ../../../../../windows:/storage
-      - ../../../../../shared:/shared
-      # TODO share socket
-      - ../../../../../oem:/oem
-      - ./scripts:/shared/scripts
+      - ./vm-storage:/storage
+      - ./shared:/shared
+      - ./oem:/oem
     restart: always
     stop_grace_period: 2m
   blender:
     build:
-      context: .
-      dockerfile: Dockerfile.blender
+      context: ..
+      dockerfile: integration/Dockerfile.blender
     container_name: blender
     volumes:
-      - ../:/plugin
-      - ../tests/bdd/screenshots:/screenshots
-    environment:
-      - PYTHONPATH=/plugin
+      - ./screenshots:/screenshots
     depends_on:
       - windows
     restart: "no"

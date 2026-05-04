@@ -44,7 +44,7 @@ test-bdd-screenshots:  ## Run BDD tests with screenshot capture
 	uv run pytest tests/bdd/ -v
 
 test-bdd-sketchup:  ## Launch SketchUp in VM, create test model, run screenshot tests
-	./integration/scripts/sketchup_launch_and_test.sh
+	./integration/shared/scripts/sketchup_launch_and_test.sh
 
 
 # ── Ruby (SketchUp plugin) ───────────────────────────────────────

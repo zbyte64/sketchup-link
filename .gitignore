@@ -12,4 +12,6 @@ wheels/
 .venv
 *.rbz
 
-tests/bdd/screenshots
+tests/bdd/screenshots/
+integration/vm-storage/
+integration/shared/

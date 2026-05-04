@@ -81,8 +81,8 @@ and `windows/` (Docker VM state), plus the three sibling extensions under
 |`blender_plugin/headers/`|C header files for SketchUp SDK|
 |`blender_plugin/libs/`|Platform-specific SketchUp SDK libraries|
 |`tests/`|pytest integration tests|
-|`integration/`|VM infrastructure (compose.yml, Dockerfile.blender, scripts)|
-|`integration/scripts/`|VM orchestration (launch_sketchup.pl, install.bat, sketchup_launch_and_test.sh)|
+`integration/`|VM infrastructure (compose.yml, Dockerfile.blender, vm-storage, shared, screenshots)|
+`integration/shared/scripts/`|VM orchestration scripts (launch_sketchup.pl, install.bat, sketchup_launch_and_test.sh)|
 |`../..` (monorepo root)|Crawled API reference (`docs/`), Docker VM state (`windows/`)|
 
 
