@@ -706,6 +706,24 @@ def then_hidden_layer_entities_excluded(request):
     assert len(hidden_layers) >= 1, "Expected at least one hidden layer"
 
 
+def _blender_docker_cmd():
+    """Return the docker compose base command for running a Blender command.
+
+    Uses `docker compose exec` when the blender container is already running
+    (reusing the long-lived container), and `docker compose run --rm` otherwise
+    (creating a transient one-shot container).
+    """
+    try:
+        result = subprocess.run(
+            ['docker', 'container', 'inspect', '-f', '{{.State.Status}}', 'blender'],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip() == 'running':
+            return ['docker', 'compose', '-f', _COMPOSE_FILE, 'exec', '-i', 'blender']
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    return ['docker', 'compose', '-f', _COMPOSE_FILE, 'run', '--rm', '--no-deps', 'blender']
+
 # =========================================================================
 # THEN steps — Screenshots
 # =========================================================================
@@ -739,9 +757,7 @@ def then_screenshot_captured(request, screenshot_dir, no_screenshots):
     # Inside the container, screenshot_dir maps to /screenshots/<scenario>/
     container_model_path = '/screenshots/' + os.path.basename(screenshot_dir) + '/model.json'
     container_output_path = '/screenshots/' + os.path.basename(screenshot_dir) + '/render.png'
-    cmd = [
-        'docker', 'compose', '-f', _COMPOSE_FILE, 'run', '--rm',
-        'blender',
+    cmd = _blender_docker_cmd() + [
         'blender', '--background',
         '--python', '/plugin/tests/bdd/render_screenshot.py',
         '--',
@@ -801,9 +817,7 @@ def then_wireframe_screenshot_captured(request, screenshot_dir, no_screenshots):
     # Inside the container, screenshot_dir maps to /screenshots/<scenario>/
     container_model_path = '/screenshots/' + os.path.basename(screenshot_dir) + '/model.json'
     container_output_path = '/screenshots/' + os.path.basename(screenshot_dir) + '/render_wireframe.png'
-    cmd = [
-        'docker', 'compose', '-f', _COMPOSE_FILE, 'run', '--rm',
-        'blender',
+    cmd = _blender_docker_cmd() + [
         'blender', '--background',
         '--python', '/plugin/tests/bdd/render_wireframe_screenshot.py',
         '--',
