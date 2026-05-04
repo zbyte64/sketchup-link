@@ -17,12 +17,13 @@ module SketchupLink
 
     def start(socket_path)
       @socket_path = socket_path
-      if ENV['SERVER_MODE'] == 'tcp'
-        port = (ENV['TCP_PORT'] || DEFAULT_TCP_PORT).to_i
-        @server = TCPServer.new('0.0.0.0', port)
-      else
+      if ENV['SERVER_MODE'] == 'unix'
         File.delete(socket_path) if File.exist?(socket_path)
         @server = UNIXServer.new(socket_path)
+      else
+        # Default to TCP mode — no env var needed when running in the VM
+        port = (ENV['TCP_PORT'] || DEFAULT_TCP_PORT).to_i
+        @server = TCPServer.new('0.0.0.0', port)
       end
       @timer_id = UI.start_timer(TIMER_INTERVAL, true) do
         tick
@@ -37,7 +38,7 @@ module SketchupLink
       @clients.clear
       @buffers.clear
       @server&.close rescue nil
-      if ENV['SERVER_MODE'] != 'tcp' && @socket_path && File.exist?(@socket_path)
+      if ENV['SERVER_MODE'] == 'unix' && @socket_path && File.exist?(@socket_path)
         File.delete(@socket_path)
       end
     rescue StandardError
@@ -147,6 +148,24 @@ module SketchupLink
           respond(client, 400, JSON.generate('error' => 'no active model'))
         end
         remove_client(client)
+      when /\APOST \/test_model(\s|\z)/
+        model = Sketchup.active_model
+        unless model
+          respond(client, 400, JSON.generate('error' => 'no active model'))
+          remove_client(client)
+        else
+          begin
+            model.start_operation('Create Test Model', true)
+            create_test_model_from_factories(model)
+            model.commit_operation
+            respond(client, 200, JSON.generate('ok' => true))
+          rescue => e
+            model.abort_operation
+            respond(client, 500, JSON.generate('error' => e.message))
+          end
+          remove_client(client)
+        end
+
       else
         respond(client, 404, JSON.generate('error' => 'not found'))
         remove_client(client)
@@ -202,5 +221,62 @@ module SketchupLink
 
       Regexp.last_match(1).split(',').map(&:strip).reject(&:empty?)
     end
+    # Creates the canonical test model matching tests/integration/factories.rb spec.
+    # Called by POST /test_model.
+    def create_test_model_from_factories(model)
+      # Layers
+      furniture_layer = model.layers.add('Furniture')
+      hidden_layer = model.layers.add('Hidden')
+      hidden_layer.visible = false
+
+      # Materials
+      red_mat = model.materials.add('Red')
+      red_mat.color = Sketchup::Color.new(220, 20, 20)
+      blue_mat = model.materials.add('Blue')
+      blue_mat.color = Sketchup::Color.new(20, 20, 200)
+
+      size  = 2.0
+      y_off = 0.0
+
+      # --- Top-level entity [0]: Face with front material Red ---
+      pts1 = [[-size, y_off - size, 0], [size, y_off - size, 0],
+              [size, y_off + size, 0], [-size, y_off + size, 0]]
+      face1 = model.entities.add_face(pts1)
+      face1.material = red_mat
+
+      # --- Top-level entity [1]: Face with back material Blue ---
+      pts2 = [[-size + 6, y_off - size, 0], [size + 6, y_off - size, 0],
+              [size + 6, y_off + size, 0], [-size + 6, y_off + size, 0]]
+      face2 = model.entities.add_face(pts2)
+      face2.back_material = blue_mat
+
+      # --- Top-level entity [2]: Edge ---
+      edge = model.entities.add_line([0, y_off - 1, 1], [2, y_off + 1, 1])
+
+      # --- Top-level entity [3]: Group 'FurnitureGroup' on layer Furniture ---
+      group = model.entities.add_group
+      group.name = 'FurnitureGroup'
+      group.layer = furniture_layer
+      gpts = [[-size, -size, 0], [size, -size, 0],
+              [size, size, 0], [-size, size, 0]]
+      gface = group.entities.add_face(gpts)
+      gface.layer = furniture_layer
+      gedge = group.entities.add_line([0, -1, 1], [2, 1, 1])
+      gedge.layer = furniture_layer
+
+      # --- Component definition 'Chair' with 2 faces ---
+      chair_def = model.definitions.add('Chair')
+      cpts1 = [[-size, -size + 4, 0], [size, -size + 4, 0],
+               [size, size + 4, 0], [-size, size + 4, 0]]
+      chair_def.entities.add_face(cpts1)
+      cpts2 = [[-size + 6, -size + 4, 0], [size + 6, -size + 4, 0],
+               [size + 6, size + 4, 0], [-size + 6, size + 4, 0]]
+      chair_def.entities.add_face(cpts2)
+
+      # --- Top-level entity [4]: ComponentInstance on layer Furniture ---
+      inst = model.entities.add_instance(chair_def, Geom::Transformation.new)
+      inst.layer = furniture_layer
+    end
+
   end
 end

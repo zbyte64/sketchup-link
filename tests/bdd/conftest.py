@@ -41,7 +41,7 @@ _SCREENSHOT_DIR = os.path.join(os.path.dirname(__file__), 'screenshots')
 _RUN_BLENDER_PY = os.path.join(os.path.dirname(__file__), 'run_blender_assertions.py')
 _RENDER_SCREENSHOT_PY = os.path.join(os.path.dirname(__file__), 'render_screenshot.py')
 _RENDER_WIREFRAME_PY = os.path.join(os.path.dirname(__file__), 'render_wireframe_screenshot.py')
-_TCP_HOST = 'windows'
+_TCP_HOST = '127.0.0.1'
 _TCP_PORT = 9876
 
 
