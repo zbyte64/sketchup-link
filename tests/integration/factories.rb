@@ -24,10 +24,18 @@ module Factories
     [rand_float, rand_float, rand_float]
   end
 
-  # A planar quad (4 verts) tessellated into 2 triangles.
-  # Both verts and uvs use 4.times.map — equal length by construction.
+  # A planar quad at z≈0 with extent ~4 units, slightly jittered.
+  # The large size ensures the geometry is clearly visible in
+  # screenshots even at modest render resolutions.
   def self.rand_quad_mesh
-    verts = 4.times.map { rand_vertex }
+    base = 2.0
+    jitter = 0.5
+    verts = [
+      [-base + rand_float(0, jitter), -base + rand_float(0, jitter), rand_float(-jitter, jitter)],
+      [ base + rand_float(0, jitter), -base + rand_float(0, jitter), rand_float(-jitter, jitter)],
+      [ base + rand_float(0, jitter),  base + rand_float(0, jitter), rand_float(-jitter, jitter)],
+      [-base + rand_float(0, jitter),  base + rand_float(0, jitter), rand_float(-jitter, jitter)],
+    ]
     tris  = [[0, 1, 2], [0, 2, 3]]
     uvs   = 4.times.map { [rand_float(0.0, 1.0), rand_float(0.0, 1.0)] }
     [verts, tris, uvs]

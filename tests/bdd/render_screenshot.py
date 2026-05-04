@@ -128,19 +128,32 @@ def _setup_camera(context, bbox_min, bbox_max):
 
 
 def _look_at_rotation(direction):
-    """Compute Euler rotation angles (XYZ) for a camera looking along `direction`."""
-    x, y, z = direction
-    length = math.sqrt(x * x + y * y + z * z)
-    if length < 1e-8:
-        return (0, 0, 0)
-
-    # Spherical coordinates
-    theta = math.atan2(y, x)  # azimuth
-    phi = math.acos(z / length)  # inclination
-
-    # XYZ Euler: Align -Z axis to direction
-    return (phi - math.pi / 2, 0, -theta + math.pi / 2)
-
+    """Compute Euler rotation angles (XYZ) for a camera looking along `direction`.
+    Uses orthonormal basis construction for correct Blender camera alignment.
+    """
+    from mathutils import Matrix, Vector
+    forward = Vector(direction).normalized()
+    # Camera looks down -Z; construct orthonormal basis.
+    # Handle near-vertical look directions where world-up and forward collide.
+    up_ref = Vector((0, 0, 1))
+    right = forward.cross(up_ref)
+    if right.length_squared < 1e-12:
+        # forward is nearly parallel to world-up — use X as right
+        right = Vector((1, 0, 0))
+    else:
+        right.normalize()
+    up = right.cross(forward).normalized()
+    # Build a 3×3 rotation matrix from the camera's local axes (row-major).
+    #   row 0 = camera X (right),
+    #   row 1 = camera Y (up),
+    #   row 2 = camera Z (forward → -Z in Blender convention).
+    # Build a 3×3 rotation matrix (columns = camera axes in world space).
+    mat = Matrix((
+        (right.x, up.x, -forward.x),
+        (right.y, up.y, -forward.y),
+        (right.z, up.z, -forward.z),
+    ))
+    return mat.to_euler("XYZ")
 
 def _setup_lighting(context, bbox_min, bbox_max):
     """Add default area lights for solid viewport rendering."""
@@ -227,6 +240,7 @@ def _setup_render_settings(context, screenshot_path):
 
 
 def main():
+    import traceback
     import bpy  # noqa: E402
 
     # Parse arguments after '--'
@@ -279,8 +293,34 @@ def main():
             print(json.dumps({"status": "error", "message": f"Import returned: {result}"}))
             sys.exit(1)
 
+        # Diagnostics: log post-import scene state
+        mesh_count = sum(1 for o in bpy.data.objects if o.type == "MESH")
+        total_objs = len(bpy.data.objects)
+        print(json.dumps({
+            "status": "debug",
+            "phase": "post_import",
+            "mesh_objects": mesh_count,
+            "total_objects": total_objs,
+            "collections": [c.name for c in bpy.data.collections],
+        }), flush=True)
+
         # Compute scene bounds for camera/lighting
         bbox_min, bbox_max = _compute_scene_bounds()
+        print(json.dumps({
+            "status": "debug",
+            "phase": "bounds",
+            "bbox_min": list(bbox_min),
+            "bbox_max": list(bbox_max),
+        }), flush=True)
+
+        # If no mesh objects found, add a diagnostic cube to verify render
+        if bbox_min == (-1, -1, -1) and bbox_max == (1, 1, 1) and mesh_count == 0:
+            print(json.dumps({"status": "warning", "message": "No mesh objects found — creating diagnostic cube"}), flush=True)
+            bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 1))
+            cube = bpy.context.object
+            cube.name = "DiagnosticCube"
+            bbox_min, bbox_max = (-0.5, -0.5, -0.5), (0.5, 0.5, 0.5)
+            mesh_count = 1
 
         # Set up camera, lighting, render settings
         _setup_camera(context, bbox_min, bbox_max)
