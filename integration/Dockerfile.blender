@@ -1,0 +1,46 @@
+# syntax=docker/dockerfile:1
+# Blender headless image for BDD screenshot tests
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# System deps for Blender headless (EGL/OpenGL with software rasterizer)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    xz-utils \
+    libxxf86vm1 \
+    libxfixes3 \
+    libxi6 \
+    libxrender1 \
+    libgl1 \
+    libegl1 \
+    libegl-mesa0 \
+    libgl1-mesa-dri \
+    libgles2 \
+    libgomp1 \
+    libxkbcommon0 \
+    libxcb-cursor0 \
+    libsm6 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Download and extract Blender 4.2 LTS
+RUN curl -fsSL "https://download.blender.org/release/Blender4.2/blender-4.2.0-linux-x64.tar.xz" \
+    -o /tmp/blender.tar.xz \
+    && tar -xf /tmp/blender.tar.xz -C /opt \
+    && rm /tmp/blender.tar.xz
+
+# Symlink blender binary
+RUN ln -s /opt/blender-4.2.0-linux-x64/blender /usr/local/bin/blender
+
+# Ensure Blender's bundled pip and install test deps
+RUN /opt/blender-4.2.0-linux-x64/4.2/python/bin/python3.11 -m ensurepip && \
+    /opt/blender-4.2.0-linux-x64/4.2/python/bin/python3.11 -m pip install --no-cache-dir \
+        pytest>=9.0.2 \
+        pytest-bdd>=8.0.0
+
+# Verify Blender works
+RUN blender --version
+
+# Default: keep container alive for on-demand executor use
+CMD ["sleep", "infinity"]

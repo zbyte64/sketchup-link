@@ -28,6 +28,7 @@ from pytest_bdd import given, when, then
 # ---------------------------------------------------------------------------
 
 _REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', '..'))
+_COMPOSE_FILE = os.path.normpath(os.path.join(_REPO_ROOT, 'integration', 'compose.yml'))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
@@ -738,9 +739,8 @@ def then_screenshot_captured(request, screenshot_dir, no_screenshots):
     # Inside the container, screenshot_dir maps to /screenshots/<scenario>/
     container_model_path = '/screenshots/' + os.path.basename(screenshot_dir) + '/model.json'
     container_output_path = '/screenshots/' + os.path.basename(screenshot_dir) + '/render.png'
-
     cmd = [
-        'docker', 'compose', 'run', '--rm',
+        'docker', 'compose', '-f', _COMPOSE_FILE, 'run', '--rm',
         'blender',
         'blender', '--background',
         '--python', '/plugin/tests/bdd/render_screenshot.py',
@@ -801,9 +801,8 @@ def then_wireframe_screenshot_captured(request, screenshot_dir, no_screenshots):
     # Inside the container, screenshot_dir maps to /screenshots/<scenario>/
     container_model_path = '/screenshots/' + os.path.basename(screenshot_dir) + '/model.json'
     container_output_path = '/screenshots/' + os.path.basename(screenshot_dir) + '/render_wireframe.png'
-
     cmd = [
-        'docker', 'compose', 'run', '--rm',
+        'docker', 'compose', '-f', _COMPOSE_FILE, 'run', '--rm',
         'blender',
         'blender', '--background',
         '--python', '/plugin/tests/bdd/render_wireframe_screenshot.py',

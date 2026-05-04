@@ -50,24 +50,23 @@ make test-bdd-screenshots
 ```
 
 ## Architecture
-
 ```
-tests/bdd/
-├── features/                         # Gherkin .feature files
-│   ├── live_sync.feature             # Sync workflows
-│   └── geometry_fidelity.feature     # Data correctness checks
-├── step_defs/                        # pytest-bdd step implementations
-│   ├── __init__.py
-│   ├── conftest.py                   # BDD-specific fixtures
-│   ├── test_sketchup_steps.py        # "Given SketchUp..." steps
-│   ├── test_blender_steps.py         # "Then Blender..." steps
-│   └── test_live_sync_steps.py       # "When sync..." steps
-├── conftest.py                       # Top-level fixtures (server, model data, screenshots)
-├── screenshots/                      # Output directory (gitignored except .gitkeep)
-│   └── .gitkeep
-├── run_blender_assertions.py         # Blender headless entry point
-├── test_live_sync_scenarios.py       # Scenario runner for live_sync.feature
-└── test_geometry_fidelity_scenarios.py # Scenario runner for geometry_fidelity.feature
+sketchup-link/                    # Project root (from shared/project/ext/sketchup-link/)
+├── integration/                  # VM infrastructure
+│   ├── compose.yml               # Docker Compose config
+│   ├── Dockerfile.blender        # Blender Docker image
+│   └── scripts/                  # VM orchestration scripts
+├── tests/
+│   ├── integration/              # pytest integration tests
+│   └── bdd/                      # BDD test suite
+│       ├── features/             # Gherkin .feature files
+│       │   ├── live_sync.feature
+│       │   └── geometry_fidelity.feature
+│       ├── step_defs/
+│       ├── conftest.py           # Top-level fixtures
+│       ├── screenshots/          # Output directory
+│       └── ...
+└── blender_plugin/               # Blender addon source
 ```
 
 ## Test Model

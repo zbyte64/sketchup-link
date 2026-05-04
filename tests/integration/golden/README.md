@@ -33,7 +33,7 @@ File.write("tests/integration/golden/test_model.json",
 
 ### From a real SketchUp model (requires Docker VM)
 
-1. Start the Docker Windows 11 VM: `docker compose up -d`
+1. Start the Docker Windows 11 VM: `docker compose -f ../../integration/compose.yml up -d`
 2. RDP into the VM (port 3389, credentials: Docker / admin)
 3. Open or create the test model in SketchUp Pro
 4. In SketchUp, go to **Plugins → SketchUp Link: Save Model JSON**
