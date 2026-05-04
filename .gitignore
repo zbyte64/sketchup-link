@@ -14,4 +14,4 @@ wheels/
 
 tests/bdd/screenshots/
 integration/vm-storage/
-integration/shared/
+integration/shared/installers/
