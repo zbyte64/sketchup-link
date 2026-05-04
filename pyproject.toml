@@ -8,3 +8,18 @@ dependencies = [
     "bpy>=5.1.0",
     "pytest>=9.0.2",
 ]
+
+[dependency-groups]
+dev = [
+    "python-lsp-server>=1.14.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/integration"]
+# test_blender_import.py requires Blender's bpy — excluded from regular runs
+addopts = [
+    "--ignore=tests/integration/test_blender_import.py",
+    "--ignore=tests/integration/conftest_blender.py",
+    "--ignore=tests/integration/run_blender_tests.py",
+]
+
