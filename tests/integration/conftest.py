@@ -27,10 +27,7 @@ import pytest
 # ---------------------------------------------------------------------------
 
 _REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', '..'))
-_ADAPTER_DIR = os.path.join(
-    _REPO_ROOT, 
-)
-
+_ADAPTER_DIR = _REPO_ROOT
 if _ADAPTER_DIR not in sys.path:
     sys.path.insert(0, _ADAPTER_DIR)
 
@@ -122,5 +119,5 @@ def model_data(ruby_server):
 @pytest.fixture(scope='session')
 def json_model(model_data):
     """Wrap model_data in JsonModel. Session-scoped — all tests share one instance."""
-    from blender_plugin.sketchup_link import JsonModel
+    from blender_plugin.live_adapter import JsonModel
     return JsonModel(model_data)

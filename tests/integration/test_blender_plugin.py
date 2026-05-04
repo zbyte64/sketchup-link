@@ -26,7 +26,7 @@ import pytest
 import socket
 # TODO validate sync changes can be accepted by bpy
 
-from blender_plugin.sketchup_link import fetch_model_json, JsonLayer, JsonDefinitionRef
+from blender_plugin.live_adapter import fetch_model_json, JsonLayer, JsonDefinitionRef
 
 
 # ===========================================================================

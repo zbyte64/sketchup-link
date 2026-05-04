@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "Cython>=0.29.24"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sketchup-link-importer"
+version = "0.28.0"
+authors = [
+    {name = "Martijn Berger"},
+    {name = "Jason Kraus"},
+]
+description = "Cython bindings for the official SketchUp SDK — part of sketchup-link"
+readme = "README.md"
+requires-python = ">=3.11.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/arindam-m/pyslapi"
+"Bug Tracker" = "https://github.com/arindam-m/pyslapi/issues"
+
+[tool.setuptools]
+packages = ["blender_plugin"]
+
+# Note: We still need setup.py for proper Cython extension configuration
+# See setup.py for the extension module definitions
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "C4",
+    "DTZ",
+    "E",
+    "F",
+    "I",
+    "RUF",
+    "UP",
+    "W",
+    ]
+ignore = [
+    "E203",
+    "RUF012",
+    ]

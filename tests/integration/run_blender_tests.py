@@ -13,6 +13,7 @@ import os
 import sys
 import types
 import site
+
 _USER_SITE = site.getusersitepackages()
 if _USER_SITE and _USER_SITE not in sys.path:
     sys.path.insert(0, _USER_SITE)
@@ -24,18 +25,17 @@ if _USER_SITE and _USER_SITE not in sys.path:
 
 _TEST_DIR = os.path.dirname(os.path.abspath(__file__))
 _SKP_LINK_DIR = os.path.normpath(os.path.join(_TEST_DIR, "..", ".."))
-_IMPORTER_DIR = os.path.normpath(os.path.join(_SKP_LINK_DIR, "..", "Sketchup_Importer"))
 
-for p in (_SKP_LINK_DIR, _IMPORTER_DIR):
-    if p not in sys.path:
-        sys.path.insert(0, p)
+if _SKP_LINK_DIR not in sys.path:
+    sys.path.insert(0, _SKP_LINK_DIR)
+
 
 # ---------------------------------------------------------------------------
 # Stub the Cython sketchup module
 # ---------------------------------------------------------------------------
 
-_sketchup_stub = types.ModuleType("sketchup_importer.sketchup")
-_sketchup_stub.__package__ = "sketchup_importer"
+_sketchup_stub = types.ModuleType("blender_plugin.sketchup")
+_sketchup_stub.__package__ = "blender_plugin"
 
 
 class _StubModel:
@@ -46,19 +46,20 @@ class _StubModel:
 
 
 _sketchup_stub.Model = _StubModel
-sys.modules["sketchup_importer.sketchup"] = _sketchup_stub
+sys.modules["blender_plugin.sketchup"] = _sketchup_stub
+
 
 # ---------------------------------------------------------------------------
 # Register addons
 # ---------------------------------------------------------------------------
 
 import bpy  # noqa: E402
-import sketchup_importer  # noqa: E402
 
 # Enable the addon so context.preferences.addons has the entry that
 # SceneImporter.load() needs for self.prefs.
-if "sketchup_importer" not in bpy.context.preferences.addons:
-    bpy.ops.preferences.addon_enable(module="sketchup_importer")
+if "blender_plugin" not in bpy.context.preferences.addons:
+    bpy.ops.preferences.addon_enable(module="blender_plugin")
+
 
 # ---------------------------------------------------------------------------
 # Run pytest

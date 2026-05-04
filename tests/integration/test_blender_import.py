@@ -22,8 +22,8 @@ import os
 import bpy
 import pytest
 
-from sketchup_importer import SceneImporter
-from sketchup_importer.live_adapter import JsonModel
+from blender_plugin.scene_importer import SceneImporter
+from blender_plugin.live_adapter import JsonModel
 
 _GOLDEN_DIR = os.path.join(os.path.dirname(__file__), "golden")
 _GOLDEN_PATH = os.path.join(_GOLDEN_DIR, "test_model.json")

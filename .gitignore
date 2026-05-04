@@ -3,10 +3,11 @@ __pycache__/
 *.py[oc]
 build/
 dist/
+libs/
+headers/
 wheels/
 *.egg-info
 
 # Virtual environments
 .venv
-
 *.rbz
