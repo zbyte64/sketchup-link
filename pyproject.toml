@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "bpy>=5.1.0",
     "pytest>=9.0.2",
+    "pytest-bdd>=8.0.0",
 ]
 
 [dependency-groups]
@@ -15,11 +16,13 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests/integration"]
+testpaths = ["tests/integration", "tests/bdd"]
 # test_blender_import.py requires Blender's bpy — excluded from regular runs
+# run_blender_assertions.py is a Blender headless entry point, not a test scenario
 addopts = [
     "--ignore=tests/integration/test_blender_import.py",
     "--ignore=tests/integration/conftest_blender.py",
     "--ignore=tests/integration/run_blender_tests.py",
+    "--ignore=tests/bdd/run_blender_assertions.py",
 ]
 

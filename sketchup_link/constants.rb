@@ -12,6 +12,7 @@ module SketchupLink
 
   DEFAULT_SOCKET_PATH = default_socket_path.freeze
 
+  DEFAULT_TCP_PORT = 9876.freeze
   EVT_TRANSACTION_COMMIT = 'transaction.commit'.freeze
   EVT_TRANSACTION_UNDO   = 'transaction.undo'.freeze
   EVT_TRANSACTION_REDO   = 'transaction.redo'.freeze

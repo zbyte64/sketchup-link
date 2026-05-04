@@ -16,8 +16,13 @@ module SketchupLink
 
     def start(socket_path)
       @socket_path = socket_path
-      File.delete(socket_path) if File.exist?(socket_path)
-      @server = UNIXServer.new(socket_path)
+      if ENV['SERVER_MODE'] == 'tcp'
+        port = (ENV['TCP_PORT'] || DEFAULT_TCP_PORT).to_i
+        @server = TCPServer.new('0.0.0.0', port)
+      else
+        File.delete(socket_path) if File.exist?(socket_path)
+        @server = UNIXServer.new(socket_path)
+      end
       @timer_id = UI.start_timer(TIMER_INTERVAL, true) do
         tick
       rescue IOError, Errno::EBADF
@@ -31,7 +36,9 @@ module SketchupLink
       @clients.clear
       @buffers.clear
       @server&.close rescue nil
-      File.delete(@socket_path) if @socket_path && File.exist?(@socket_path)
+      if ENV['SERVER_MODE'] != 'tcp' && @socket_path && File.exist?(@socket_path)
+        File.delete(@socket_path)
+      end
     rescue StandardError
       # best-effort cleanup
     end

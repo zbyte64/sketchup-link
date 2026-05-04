@@ -21,6 +21,8 @@ import tempfile
 
 DEFAULT_SOCKET_PATH = os.path.join(tempfile.gettempdir(), "sketchup-link.sock")
 
+TCP_DEFAULT_HOST = "127.0.0.1"
+TCP_DEFAULT_PORT = 9876
 
 # ---------------------------------------------------------------------------
 # Transport
@@ -51,6 +53,17 @@ def fetch_model_json(socket_path=DEFAULT_SOCKET_PATH):
     finally:
         conn.close()
 
+def fetch_model_json_tcp(host=TCP_DEFAULT_HOST, port=TCP_DEFAULT_PORT):
+    """GET /model over TCP/IP. Returns the parsed JSON dict."""
+    conn = http.client.HTTPConnection(host, port)
+    try:
+        conn.request("GET", "/model")
+        resp = conn.getresponse()
+        if resp.status != 200:
+            raise RuntimeError(f"sketchup-link returned HTTP {resp.status}")
+        return json.loads(resp.read())
+    finally:
+        conn.close()
 
 # ---------------------------------------------------------------------------
 # Helpers
