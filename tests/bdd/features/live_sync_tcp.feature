@@ -11,32 +11,40 @@ Feature: Live Sync Round Trip (TCP mode)
     And all mesh geometry is imported
     And component definitions are imported as collections
     And layer visibility is respected
+    And a SketchUp screenshot is captured
     And a screenshot is captured
     And a wireframe screenshot is captured
 
   Scenario: Face vertex positions are correct
     When I import the model via live sync
     Then the face vertex positions match the JSON data
+    And a SketchUp screenshot is captured
     And a screenshot is captured
     And a wireframe screenshot is captured
 
   Scenario: Material colors are accurate
     When I import the model via live sync
     Then the Red material diffuse color matches the expected sRGB-to-linear conversion
+
     And the Blue material diffuse color matches the expected sRGB-to-linear conversion
+    And a SketchUp screenshot is captured
     And a screenshot is captured
     And a wireframe screenshot is captured
 
   Scenario: Group hierarchy is preserved
     When I import the model via live sync
     Then the FurnitureGroup contains its child entities
+
     And the FurnitureGroup parent-child hierarchy is correct
+    And a SketchUp screenshot is captured
     And a screenshot is captured
     And a wireframe screenshot is captured
 
   Scenario: Component instances reference correct definitions
     When I import the model via live sync
     Then the Chair component instance uses the Chair definition
+
     And the Chair definition has the correct face count
+    And a SketchUp screenshot is captured
     And a screenshot is captured
     And a wireframe screenshot is captured

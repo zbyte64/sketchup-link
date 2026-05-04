@@ -3,6 +3,7 @@
 require 'socket'
 require 'json'
 
+require 'securerandom'
 module SketchupLink
   class Server
     def initialize(subscription_manager)
@@ -128,10 +129,54 @@ module SketchupLink
         respond(client, 200, JSON.generate('ok' => true))
         remove_client(client)
 
+      when /\AGET \/screenshot(\?|\s|\z)/
+        if Sketchup.active_model
+          width, height = parse_screenshot_params(request_line)
+          temp_path = File.join(ENV['TEMP'] || ENV['TMP'] || '/tmp', "sketchup_screenshot_#{SecureRandom.hex}.png")
+          begin
+            view = Sketchup.active_model.active_view
+            view.write_image(temp_path, width, height, true, 0.9)
+            png_data = File.binread(temp_path)
+            respond_binary(client, 200, png_data, 'image/png')
+          rescue => e
+            respond(client, 500, JSON.generate('error' => "screenshot failed: #{e.message}"))
+          ensure
+            File.delete(temp_path) rescue nil
+          end
+        else
+          respond(client, 400, JSON.generate('error' => 'no active model'))
+        end
+        remove_client(client)
       else
         respond(client, 404, JSON.generate('error' => 'not found'))
         remove_client(client)
       end
+    end
+
+    def respond_binary(client, status, data, content_type)
+      status_text = status == 200 ? 'OK' : 'Internal Server Error'
+      client.write(
+        "HTTP/1.1 #{status} #{status_text}\r\n" \
+        "Content-Type: #{content_type}\r\n" \
+        "Content-Length: #{data.bytesize}\r\n" \
+        "Connection: close\r\n\r\n"
+      )
+      client.write(data)
+      client.flush
+    rescue Errno::EPIPE, IOError
+      remove_client(client)
+    end
+    def parse_screenshot_params(request_line)
+      width = 1920
+      height = 1080
+      query = request_line.split('?', 2).last.to_s.strip
+      return [width, height] if query.empty?
+      query.split('&').each do |param|
+        key, value = param.split('=', 2)
+        width = value.to_i if key == 'width' && value.match?(/\A\d+\z/)
+        height = value.to_i if key == 'height' && value.match?(/\A\d+\z/)
+      end
+      [width, height]
     end
 
     def respond(client, status, body)

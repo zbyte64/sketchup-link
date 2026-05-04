@@ -9,6 +9,7 @@ Feature: Geometric Fidelity
   Scenario: Transform matrix round-trip preserves identity
     When I import the model via live sync
     Then the FurnitureGroup transform is identity
+    And a SketchUp screenshot is captured
     And a screenshot is captured
     And a wireframe screenshot is captured
 
@@ -16,17 +17,20 @@ Feature: Geometric Fidelity
     When I import the model via live sync
     Then the front-face material references are correct
     And the back-face material references are correct
+    And a SketchUp screenshot is captured
     And a screenshot is captured
     And a wireframe screenshot is captured
 
   Scenario: All entities are present after import
     When I import the model via live sync
     Then the number of imported entities matches the JSON data
+    And a SketchUp screenshot is captured
     And a screenshot is captured
     And a wireframe screenshot is captured
 
   Scenario: Hidden layer entities are excluded
     When I import the model via live sync
     Then entities on hidden layers are not imported
+    And a SketchUp screenshot is captured
     And a screenshot is captured
     And a wireframe screenshot is captured

@@ -776,6 +776,72 @@ def then_wireframe_screenshot_captured(request, screenshot_dir, no_screenshots):
     except (json.JSONDecodeError, IndexError):
         pass  # Non-JSON output from Blender is fine; screenshot file is the ground truth
 
+def _write_sketchup_placeholder(screenshot_dir, reason):
+    """Write a SketchUp screenshot placeholder file with a diagnostic reason."""
+    placeholder_path = os.path.join(screenshot_dir, 'sketchup_placeholder.txt')
+    with open(placeholder_path, 'w') as f:
+        f.write(f'SketchUp screenshot placeholder ({reason})\n')
+    print(f"\nSketchUp screenshot placeholder ({reason})")
+
+
+@then('a SketchUp screenshot is captured')
+def then_sketchup_screenshot_captured(request, screenshot_dir, no_screenshots):
+    """
+    Capture a screenshot of the SketchUp active view.
+
+    In CI-safe mode (--no-screenshots), writes a placeholder.
+    In all other modes, attempts to fetch a PNG from the SketchUp /screenshot
+    endpoint running inside the Docker Windows VM.
+
+    If the VM is unreachable, writes a placeholder with a diagnostic message
+    instead of failing — except in TCP mode (explicit VM dependency), where
+    connection failure is a hard error.
+    """
+    if no_screenshots:
+        placeholder_path = os.path.join(screenshot_dir, 'sketchup_placeholder.txt')
+        with open(placeholder_path, 'w') as f:
+            f.write('SketchUp screenshot placeholder (CI mode — no SketchUp available)\n')
+        return
+
+    host = getattr(request.node, '_tcp_host', _TCP_HOST)
+    port = getattr(request.node, '_tcp_port', _TCP_PORT)
+    mode = getattr(request.node, '_connection_mode', 'unix')
+
+    conn = http.client.HTTPConnection(host, port, timeout=5)
+    try:
+        conn.request('GET', '/screenshot')
+        resp = conn.getresponse()
+        if resp.status == 404:
+            pytest.fail(
+                'SketchUp screenshot endpoint not available — '
+                'update the SketchUp Link plugin to include the /screenshot route'
+            )
+        assert resp.status == 200, f"Expected HTTP 200, got {resp.status}"
+        png_data = resp.read()
+        output_path = os.path.join(screenshot_dir, 'sketchup.png')
+        with open(output_path, 'wb') as f:
+            f.write(png_data)
+        assert os.path.exists(output_path), f"Screenshot not created at {output_path}"
+        size = os.path.getsize(output_path)
+        assert size > 0, f"Screenshot is empty at {output_path}"
+        print(f"\nSketchUp screenshot: {output_path} ({size} bytes)")
+    except (ConnectionRefusedError, ConnectionError):
+        if mode == 'tcp':
+            pytest.fail(
+                f"Could not connect to SketchUp Link plugin at {host}:{port}.\n"
+                f"Ensure the Windows VM is running and SketchUp is serving on TCP "
+                f"port {port}."
+            )
+        _write_sketchup_placeholder(screenshot_dir, f'TCP connection to {host}:{port} failed')
+    except socket.timeout:
+        if mode == 'tcp':
+            pytest.fail(
+                f"Connection to {host}:{port} timed out after 5s.\n"
+                f"Ensure SketchUp Link plugin is responding."
+            )
+        _write_sketchup_placeholder(screenshot_dir, f'TCP connection to {host}:{port} timed out')
+    finally:
+        conn.close()
 # =========================================================================
 # Teardown: stop Ruby server after each scenario that started one
 # =========================================================================
