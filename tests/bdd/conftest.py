@@ -18,6 +18,8 @@ import sys
 import tempfile
 import re
 
+import threading
+import time
 import pytest
 from pytest_bdd import given, when, then
 
@@ -106,6 +108,64 @@ def _fetch_json_tcp(host=_TCP_HOST, port=_TCP_PORT):
         return json.loads(resp.read())
     finally:
         conn.close()
+
+# ---------------------------------------------------------------------------
+# Error server helper — minimal Python Unix-socket HTTP server for
+# testing error responses. Runs in a daemon thread.
+# ---------------------------------------------------------------------------
+
+
+def _start_error_server(path, status, body):
+    """Start a daemon thread that serves one HTTP error response on a Unix socket.
+
+    Creates a Unix socket at *path*, listens for one connection, sends the
+    given HTTP status line and JSON body, then closes and unlinks the socket.
+
+    Blocks the calling thread until the socket file exists to ensure the
+    server is ready before the test proceeds.
+    """
+    def _serve():
+        try:
+            srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            srv.bind(path)
+            srv.listen(1)
+            conn, _ = srv.accept()
+            reason = {200: "OK", 500: "Internal Server Error", 400: "Bad Request",
+                      404: "Not Found"}.get(status, "Unknown")
+            response = (
+                f"HTTP/1.1 {status} {reason}\r\n"
+                f"Content-Type: application/json\r\n"
+                f"Connection: close\r\n"
+                f"\r\n"
+                f"{body}"
+            )
+            conn.sendall(response.encode("utf-8"))
+            conn.close()
+        finally:
+            try:
+                srv.close()
+            except OSError:
+                pass
+            try:
+                os.unlink(path)
+            except FileNotFoundError:
+                pass
+
+    # Unlink stale socket before binding
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+
+    t = threading.Thread(target=_serve, daemon=True)
+    t.start()
+
+    # Wait for the socket to appear (with timeout) to avoid races
+    deadline = time.monotonic() + 5.0
+    while not os.path.exists(path):
+        if time.monotonic() > deadline:
+            raise RuntimeError(f"Error server did not create socket at {path} within 5s")
+        time.sleep(0.01)
 
 # ---------------------------------------------------------------------------
 # CLI option: --no-screenshots for CI-safe mode
@@ -784,6 +844,16 @@ def _write_sketchup_placeholder(screenshot_dir, reason):
     print(f"\nSketchUp screenshot placeholder ({reason})")
 
 
+def _fetch_sketchup_screenshot(host, port):
+    """Connect to SketchUp /screenshot endpoint and return (status, png_data)."""
+    conn = http.client.HTTPConnection(host, port, timeout=10)
+    try:
+        conn.request('GET', '/screenshot')
+        resp = conn.getresponse()
+        return resp.status, resp.read()
+    finally:
+        conn.close()
+
 @then('a SketchUp screenshot is captured')
 def then_sketchup_screenshot_captured(request, screenshot_dir, no_screenshots):
     """
@@ -807,41 +877,53 @@ def then_sketchup_screenshot_captured(request, screenshot_dir, no_screenshots):
     port = getattr(request.node, '_tcp_port', _TCP_PORT)
     mode = getattr(request.node, '_connection_mode', 'unix')
 
-    conn = http.client.HTTPConnection(host, port, timeout=5)
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutureTimeout
+
+    # Shorter timeout in non-TCP mode (VM might not be running),
+    # longer in TCP mode where the VM dependency is explicit.
+    connect_timeout = 5 if mode != 'tcp' else 15
+
+    executor = ThreadPoolExecutor(max_workers=1)
     try:
-        conn.request('GET', '/screenshot')
-        resp = conn.getresponse()
-        if resp.status == 404:
-            pytest.fail(
-                'SketchUp screenshot endpoint not available — '
-                'update the SketchUp Link plugin to include the /screenshot route'
-            )
-        assert resp.status == 200, f"Expected HTTP 200, got {resp.status}"
-        png_data = resp.read()
-        output_path = os.path.join(screenshot_dir, 'sketchup.png')
-        with open(output_path, 'wb') as f:
-            f.write(png_data)
-        assert os.path.exists(output_path), f"Screenshot not created at {output_path}"
-        size = os.path.getsize(output_path)
-        assert size > 0, f"Screenshot is empty at {output_path}"
-        print(f"\nSketchUp screenshot: {output_path} ({size} bytes)")
-    except (ConnectionRefusedError, ConnectionError):
+        future = executor.submit(_fetch_sketchup_screenshot, host, port)
+        status, png_data = future.result(timeout=connect_timeout)
+    except _FutureTimeout:
+        msg = f'TCP connection to {host}:{port} timed out after {connect_timeout}s'
+        if mode == 'tcp':
+            pytest.fail(f"{msg}.\nEnsure SketchUp Link plugin is responding.")
+        _write_sketchup_placeholder(screenshot_dir, msg)
+        return
+    except (ConnectionRefusedError, ConnectionError) as exc:
         if mode == 'tcp':
             pytest.fail(
                 f"Could not connect to SketchUp Link plugin at {host}:{port}.\n"
                 f"Ensure the Windows VM is running and SketchUp is serving on TCP "
-                f"port {port}."
+                f"port {port}.\nError: {exc}"
             )
         _write_sketchup_placeholder(screenshot_dir, f'TCP connection to {host}:{port} failed')
-    except socket.timeout:
+        return
+    except OSError as exc:
+        # Catches gaierror (DNS failure), no route to host, etc.
         if mode == 'tcp':
-            pytest.fail(
-                f"Connection to {host}:{port} timed out after 5s.\n"
-                f"Ensure SketchUp Link plugin is responding."
-            )
-        _write_sketchup_placeholder(screenshot_dir, f'TCP connection to {host}:{port} timed out')
+            pytest.fail(f"Network error connecting to {host}:{port}: {exc}")
+        _write_sketchup_placeholder(screenshot_dir, f'network error: {exc}')
+        return
     finally:
-        conn.close()
+        executor.shutdown(wait=False)
+
+    if status == 404:
+        pytest.fail(
+            'SketchUp screenshot endpoint not available — '
+            'update the SketchUp Link plugin to include the /screenshot route'
+        )
+    assert status == 200, f"Expected HTTP 200, got {status}"
+    output_path = os.path.join(screenshot_dir, 'sketchup.png')
+    with open(output_path, 'wb') as f:
+        f.write(png_data)
+    assert os.path.exists(output_path), f"Screenshot not created at {output_path}"
+    size = os.path.getsize(output_path)
+    assert size > 0, f"Screenshot is empty at {output_path}"
+    print(f"\nSketchUp screenshot: {output_path} ({size} bytes)")
 # =========================================================================
 # Teardown: stop Ruby server after each scenario that started one
 # =========================================================================
@@ -867,3 +949,151 @@ def _auto_cleanup_server(request):
             os.unlink(socket_path)
         except OSError:
             pass
+# =========================================================================
+# GIVEN steps — Error handling scenarios
+# =========================================================================
+
+
+@given('the SketchUp plugin is not running')
+def given_plugin_not_running(request):
+    """Store a nonexistent socket path to simulate a missing server."""
+    request.node._socket_path = '/tmp/nonexistent-sketchup-link-test.sock'
+
+
+@given('a SketchUp mock server returning HTTP 500')
+def given_mock_server_http_500(request):
+    """Start a local error server that returns HTTP 500."""
+    import tempfile
+    path = os.path.join(tempfile.gettempdir(), 'sketchup-link-error-test.sock')
+    _start_error_server(path, 500, '{"error": "internal error"}')
+    request.node._socket_path = path
+
+
+@given('malformed model JSON with only an invalid key')
+def given_malformed_json(request):
+    """Store a minimal JSON dict missing all required top-level keys."""
+    request.node._model_data = {"invalid": True}
+
+
+@given('an empty model JSON')
+def given_empty_model_json(request):
+    """Store a valid JSON dict with zero entities, materials, and layers."""
+    request.node._model_data = {
+        "entities": [],
+        "materials": [],
+        "layers": [],
+        "component_definitions": {},
+    }
+
+
+# =========================================================================
+# WHEN steps — Error handling scenarios
+# =========================================================================
+
+
+@when('the Blender plugin attempts to connect')
+def when_blender_attempts_connect(request):
+    """Call fetch_model_json with a nonexistent socket path and capture exception."""
+    from blender_plugin.live_adapter import fetch_model_json
+    socket_path = getattr(request.node, '_socket_path', '/tmp/nonexistent-sketchup-link-test.sock')
+    try:
+        fetch_model_json(socket_path)
+        request.node._exception = None
+    except (FileNotFoundError, ConnectionRefusedError) as exc:
+        request.node._exception = exc
+
+
+@when('the Blender plugin fetches the model')
+def when_blender_fetches_model(request):
+    """Call fetch_model_json and capture any exception."""
+    from blender_plugin.live_adapter import fetch_model_json
+    socket_path = getattr(request.node, '_socket_path', None)
+    if socket_path is None:
+        pytest.fail("No socket path set — did a 'Given' step run first?")
+    try:
+        data = fetch_model_json(socket_path)
+        request.node._result = data
+        request.node._exception = None
+    except Exception as exc:
+        request.node._exception = exc
+        request.node._result = None
+
+
+@when('the JSON is wrapped in JsonModel')
+def when_json_wrapped_in_jsonmodel(request):
+    """Wrap stored model data in JsonModel."""
+    from blender_plugin.live_adapter import JsonModel
+    data = getattr(request.node, '_model_data', None)
+    if data is None:
+        pytest.fail("No model data set — did a 'Given' step run first?")
+    request.node._json_model = JsonModel(data)
+
+
+# =========================================================================
+# THEN steps — Error handling scenarios
+# =========================================================================
+
+
+@then('a connection error is raised')
+def then_connection_error_raised(request):
+    """Assert that a FileNotFoundError or ConnectionRefusedError was raised."""
+    exc = getattr(request.node, '_exception', None)
+    assert exc is not None, (
+        "Expected a connection error (FileNotFoundError or ConnectionRefusedError) "
+        "but no exception was raised"
+    )
+    assert isinstance(exc, (FileNotFoundError, ConnectionRefusedError)), (
+        f"Expected FileNotFoundError or ConnectionRefusedError, "
+        f"got {type(exc).__name__}: {exc}"
+    )
+
+
+@then('an HTTP error is raised')
+def then_http_error_raised(request):
+    """Assert that a RuntimeError with 'HTTP 500' was raised."""
+    exc = getattr(request.node, '_exception', None)
+    assert exc is not None, "Expected a RuntimeError but no exception was raised"
+    assert isinstance(exc, RuntimeError), (
+        f"Expected RuntimeError, got {type(exc).__name__}: {exc}"
+    )
+    assert 'HTTP 500' in str(exc), (
+        f"Expected 'HTTP 500' in error message, got: {exc}"
+    )
+
+
+@then('accessing entities returns an empty iterable')
+def then_entities_empty(request):
+    """Assert that JsonModel.entities returns an empty iterable (no crash)."""
+    model = getattr(request.node, '_json_model', None)
+    assert model is not None, "No JsonModel — did 'When the JSON is wrapped in JsonModel' run?"
+    entities = list(model.entities)
+    assert len(entities) == 0, f"Expected 0 entities, got {len(entities)}"
+
+
+@then('accessing materials returns an empty iterable')
+def then_materials_empty(request):
+    """Assert that JsonModel.materials returns an empty list (no crash)."""
+    model = getattr(request.node, '_json_model', None)
+    assert model is not None, "No JsonModel"
+    assert len(model.materials) == 0, f"Expected 0 materials, got {len(model.materials)}"
+
+
+@then('accessing layers returns an empty iterable')
+def then_layers_empty(request):
+    """Assert that JsonModel.layers returns an empty list (no crash)."""
+    model = getattr(request.node, '_json_model', None)
+    assert model is not None, "No JsonModel"
+    assert len(model.layers) == 0, f"Expected 0 layers, got {len(model.layers)}"
+
+
+@then('all entity iterables are empty')
+def then_all_entity_iterables_empty(request):
+    """Assert that faces, groups, and instances are all empty."""
+    model = getattr(request.node, '_json_model', None)
+    assert model is not None, "No JsonModel"
+    faces = list(model.entities.faces)
+    groups = list(model.entities.groups)
+    instances = list(model.entities.instances)
+    assert len(faces) == 0, f"Expected 0 faces, got {len(faces)}"
+    assert len(groups) == 0, f"Expected 0 groups, got {len(groups)}"
+    assert len(instances) == 0, f"Expected 0 instances, got {len(instances)}"
