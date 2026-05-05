@@ -373,6 +373,7 @@ launch_sketchup() {
     log "=== Launching SketchUp ==="
 
     # Check if already running
+    local already_running=false
     if "$WIN_EXEC" --no-connect --timeout 30 \
         "cmd /c tasklist /NH /FI \"IMAGENAME eq SketchUp.exe\" | findstr SketchUp" \
         ".launch_check_$$.txt" 2>/dev/null; then
@@ -381,25 +382,40 @@ launch_sketchup() {
         rm -f "$SHARED_DIR/.launch_check_$$.txt" "$SHARED_DIR/.launch_check_$$.txt.exitcode" 2>/dev/null || true
         if echo "$result" | grep -qi "SketchUp"; then
             pass "SketchUp already running"
-            return 0
+            already_running=true
         fi
     fi
     rm -f "$SHARED_DIR/.launch_check_$$.txt" "$SHARED_DIR/.launch_check_$$.txt.exitcode" 2>/dev/null || true
 
-    # Launch directly
-    log "Launching SketchUp from: ${SU_EXE}"
-    "$WIN_EXEC" --no-connect --timeout 30 \
-        "cmd /c start \"\" \"${SU_EXE}\" && echo LAUNCHED" \
-        ".launch_su_$$.txt" 2>/dev/null || true
+    if [[ "$already_running" != "true" ]]; then
+        # Launch using detach mode (fire-and-forget, no --wait blocking)
+        log "Launching SketchUp from: ${SU_EXE}"
+        "$WIN_EXEC" --no-connect --detach "${SU_EXE}" ".launch_su_$$.txt" 2>/dev/null || true
 
-    local result
-    result=$(cat "$SHARED_DIR/.launch_su_$$.txt" 2>/dev/null || echo "")
-    rm -f "$SHARED_DIR/.launch_su_$$.txt" "$SHARED_DIR/.launch_su_$$.txt.exitcode" 2>/dev/null || true
-
-    if echo "$result" | grep -q "LAUNCHED"; then
-        log "Launch command sent"
-    else
-        warn "Launch command output: $result"
+        # Wait for SketchUp process to appear (up to 30s)
+        log "Waiting for SketchUp process to start..."
+        local poll_start poll_elapsed
+        poll_start=$(date +%s)
+        while true; do
+            poll_elapsed=$(( $(date +%s) - poll_start ))
+            if "$WIN_EXEC" --no-connect --timeout 30 \
+                "cmd /c tasklist /NH /FI \"IMAGENAME eq SketchUp.exe\" | findstr SketchUp" \
+                ".launch_poll_$$.txt" 2>/dev/null; then
+                local poll_result
+                poll_result=$(cat "$SHARED_DIR/.launch_poll_$$.txt" 2>/dev/null || echo "")
+                rm -f "$SHARED_DIR/.launch_poll_$$.txt" "$SHARED_DIR/.launch_poll_$$.txt.exitcode" 2>/dev/null || true
+                if echo "$poll_result" | grep -qi "SketchUp"; then
+                    log "SketchUp process started after ${poll_elapsed}s"
+                    break
+                fi
+            fi
+            rm -f "$SHARED_DIR/.launch_poll_$$.txt" "$SHARED_DIR/.launch_poll_$$.txt.exitcode" 2>/dev/null || true
+            if [[ $poll_elapsed -ge 30 ]]; then
+                warn "SketchUp process did not start within 30s"
+                break
+            fi
+            sleep 2
+        done
     fi
 
     # Wait for plugin to start

@@ -9,6 +9,7 @@
 #   win-exec.sh "cmd /c dir C:\\Program Files\\SketchUp" output.txt
 #   win-exec.sh --timeout 300 "powershell -File C:\\OEM\\install_sketchup.ps1" install_log.txt
 #   win-exec.sh --no-connect "ipconfig /all" network.txt
+#   win-exec.sh --no-connect --detach "C:\Program Files\SketchUp\SketchUp 2025\SketchUp\SketchUp.exe" launch.log
 
 set -euo pipefail
 
@@ -27,6 +28,7 @@ CONTAINER="windows"
 NO_CONNECT=false
 FORCE_RECONNECT=false
 RDP_SESSION="sketchup-link"
+DETACH=false
 
 # ---------------------------------------------------------------------------
 # Parse args
@@ -37,16 +39,20 @@ while [[ $# -gt 0 ]]; do
             TIMEOUT="$2"; shift 2 ;;
         --no-connect)
             NO_CONNECT=true; shift ;;
+        --detach)
+            DETACH=true; shift ;;
         --force-reconnect)
             FORCE_RECONNECT=true; shift ;;
         -h|--help)
-            echo "Usage: win-exec.sh [--timeout SECS] [--no-connect] [--force-reconnect] <command> <output_filename>"
+            echo "Usage: win-exec.sh [--timeout SECS] [--no-connect] [--detach] [--force-reconnect] <command_or_path> <output_filename>"
             echo ""
             echo "Runs <command> inside Windows via agent-rdp automate run."
             echo "Writes a PowerShell wrapper script to shared/, executes it,"
             echo "captures stdout+stderr into shared/<output_filename>"
             echo "and exit code into shared/<output_filename>.exitcode."
             echo ""
+            echo "  --detach          Fire-and-forget mode: launch a GUI app via Start-Process,"
+            echo "                    no output capture, returns immediately"
             echo "  --force-reconnect  Force RDP reconnect even if session is active"
             exit 0 ;;
         -*)
@@ -57,7 +63,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ $# -lt 2 ]]; then
-    echo "ERROR: Usage: win-exec.sh [--timeout SECS] <command> <output_filename>"
+    echo "ERROR: Usage: win-exec.sh [--timeout SECS] [--no-connect] [--detach] [--force-reconnect] <command_or_path> <output_filename>"
     exit 1
 fi
 
@@ -154,14 +160,25 @@ rm -f "$SHARED_DIR/$OUTFILE" "$SHARED_DIR/$OUTFILE.exitcode"
 
 # Generate PowerShell wrapper script.
 # We write it to the shared folder so Windows can execute it directly.
-# Single quotes in $COMMAND are doubled for PowerShell escaping.
-PS_ESC_COMMAND=$(echo "$COMMAND" | sed "s/'/''/g")
 
-cat > "$HOST_PS_SCRIPT" << PSEOF
+if [[ "$DETACH" == "true" ]]; then
+    # Detach mode: fire-and-forget GUI app launch using Start-Process
+    # COMMAND is a path to an executable (may contain spaces)
+    # No output capture needed — we return immediately after launching
+    PS_ESC_PATH=$(echo "$COMMAND" | sed "s/'/''/g")
+    cat > "$HOST_PS_SCRIPT" << PSEOF
+\$path = '${PS_ESC_PATH}'
+Start-Process -FilePath \$path
+PSEOF
+    log "DETACH mode: will launch: $COMMAND"
+else
+    # Normal mode: capture stdout+stderr and exit code
+    # Single quotes in $COMMAND are doubled for PowerShell escaping.
+    PS_ESC_COMMAND=$(echo "$COMMAND" | sed "s/'/''/g")
+    cat > "$HOST_PS_SCRIPT" << PSEOF
 \$command = '${PS_ESC_COMMAND}'
 \$outFile = '${WIN_OUTFILE}'
 \$exitFile = '${WIN_EXITFILE}'
-
 try {
     \$result = & cmd.exe '/c' \$command 2>&1
     \$exitCode = \$LASTEXITCODE
@@ -172,6 +189,7 @@ try {
     1 | Out-File -FilePath \$exitFile -Encoding UTF8 -Force
 }
 PSEOF
+fi
 
 log "PowerShell wrapper written: $HOST_PS_SCRIPT"
 log "Running command: $COMMAND"
@@ -183,15 +201,28 @@ log "Timeout: ${TIMEOUT}s"
 # ---------------------------------------------------------------------------
 log "Executing via agent-rdp..."
 
-agent_rdp_cmd --session "$RDP_SESSION" automate run \
-    "powershell -ExecutionPolicy Bypass -NoProfile -File \"$WIN_PS_SCRIPT\"" \
-    --wait \
-    --process-timeout "$((TIMEOUT * 1000))" 2>&1 || \
-    warn "agent-rdp returned non-zero (command may have failed on Windows side)"
+if [[ "$DETACH" == "true" ]]; then
+    # Detach mode: no --wait, fire-and-forget. agent-rdp returns immediately.
+    agent_rdp_cmd --session "$RDP_SESSION" automate run \
+        "powershell -ExecutionPolicy Bypass -NoProfile -File \"$WIN_PS_SCRIPT\"" 2>&1 || \
+        warn "agent-rdp returned non-zero (command may have failed on Windows side)"
+else
+    # Normal mode: --wait blocks until the PowerShell process exits
+    agent_rdp_cmd --session "$RDP_SESSION" automate run \
+        "powershell -ExecutionPolicy Bypass -NoProfile -File \"$WIN_PS_SCRIPT\"" \
+        --wait \
+        --process-timeout "$((TIMEOUT * 1000))" 2>&1 || \
+        warn "agent-rdp returned non-zero (command may have failed on Windows side)"
+fi
 
 # ---------------------------------------------------------------------------
-# Phase 4: Poll for output file
+# Phase 4: Poll for output file (skipped in detach mode)
 # ---------------------------------------------------------------------------
+if [[ "$DETACH" == "true" ]]; then
+    log "DETACH mode: command launched, returning immediately"
+    rm -f "$HOST_PS_SCRIPT" 2>/dev/null || true
+    exit 0
+fi
 HOST_OUTFILE="$SHARED_DIR/$OUTFILE"
 HOST_EXITFILE="$SHARED_DIR/$OUTFILE.exitcode"
 START_TIME=$(date +%s)
