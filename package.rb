@@ -15,7 +15,7 @@ output = File.join(DIST_DIR, "sketchup-link-#{version}.rbz")
 FileUtils.mkdir_p(DIST_DIR)
 FileUtils.rm_f(output)
 
-entries = Dir.glob(File.join(EXT_DIR, '**', '*')).reject { |f| File.directory?(f) }
+entries = Dir.glob(File.join(EXT_DIR, '**', '*')).reject { |f| File.directory?(f) || f.start_with?(File.join(EXT_DIR, 'integration/')) }
 
 Zip::File.open(output, create: true) do |zip|
   entries.each do |abs|

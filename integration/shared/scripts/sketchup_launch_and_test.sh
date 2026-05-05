@@ -3,10 +3,11 @@
 # `make test-bdd-sketchup`.
 #
 # Phases:
+#   0. Pre-flight validation (validate-vm.sh)
 #   1. Build plugin and extract to shared/
 #   2. Ensure Docker VM is running
-#   3. Wait for SketchUp + plugin (launch via QEMU kbd if needed)
-#   4. Verify /screenshot endpoint and create test model
+#   3. Wait for SketchUp + plugin (via wait-for-plugin.sh + sketchup-install.sh)
+#   4. Verify plugin endpoint and create test model
 #   5. Build and start Blender container
 #   6. Run TCP-mode BDD tests with screenshot capture
 #   7. Report results
@@ -16,6 +17,7 @@ set -euo pipefail
 # Paths
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPTS_DIR="$(cd "$SCRIPT_DIR/../../scripts" && pwd)"  # host-side tools
 COMPOSE_FILE="$SCRIPT_DIR/../../compose.yml"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
@@ -29,11 +31,26 @@ SCREENSHOTS_HOST_DIR="$(cd "$PLUGIN_DIR/tests/bdd/screenshots" && pwd 2>/dev/nul
 
 echo "=== Paths ==="
 echo "  Script dir:     $SCRIPT_DIR"
+echo "  Tools dir:      $SCRIPTS_DIR"
 echo "  Compose file:   $COMPOSE_FILE"
 echo "  Plugin dir:     $PLUGIN_DIR"
 echo "  Shared dir:     $SHARED_DIR"
 echo "  Extract dir:    $EXTRACT_DIR"
 echo "  Screenshots:    $SCREENSHOTS_HOST_DIR"
+
+# ---------------------------------------------------------------------------
+# Phase 0: Pre-flight validation
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== Phase 0: Pre-flight validation ==="
+if [[ -x "$SCRIPTS_DIR/validate-vm.sh" ]]; then
+    "$SCRIPTS_DIR/validate-vm.sh" --quick || {
+        echo "WARNING: Pre-flight validation had failures — continuing anyway"
+        echo "         Run 'validate-vm.sh' separately for full diagnostics"
+    }
+else
+    echo "  WARNING: validate-vm.sh not found at $SCRIPTS_DIR/validate-vm.sh"
+fi
 
 # ---------------------------------------------------------------------------
 # Phase 1: Build plugin and extract to shared/
@@ -70,7 +87,6 @@ fi
 # Extract (if needed)
 if [ -f "$RBZ_FILE" ]; then
     echo "Extracting plugin to $EXTRACT_DIR..."
-    # unzip -o overwrites, -q quiet, -d target
     unzip -q -o "$RBZ_FILE" -d "$EXTRACT_DIR"
     echo "  Extracted: $(find "$EXTRACT_DIR" -type f | wc -l) files"
     echo "  Entry point: $EXTRACT_DIR/sketchup_link.rb"
@@ -103,109 +119,113 @@ else
     echo "  Container '$CONTAINER' is already running"
 fi
 
-LOG_FILE="$SHARED_DIR/install_sketchup.log"
-echo "  Checking SketchUp installation log..."
-if [ -f "$LOG_FILE" ]; then
-    echo ""
-    echo "  === Installation log ($LOG_FILE) ==="
-    cat "$LOG_FILE"
-    echo "  === End of log ==="
-    echo ""
-
-    SUCCESS=false
-    HAS_ERROR=false
-
-    if grep -q "SketchUp installation complete" "$LOG_FILE"; then
-        SUCCESS=true
-    fi
-
-    if grep -q "ERROR" "$LOG_FILE"; then
-        HAS_ERROR=true
-    fi
-
-    if [ "$SUCCESS" = true ] && [ "$HAS_ERROR" = false ]; then
-        echo "  Installation result: SUCCESS"
-    elif [ "$SUCCESS" = true ] && [ "$HAS_ERROR" = true ]; then
-        echo "  WARNING: Installation completed BUT errors were logged — review above"
-    elif [ "$SUCCESS" = false ] && [ "$HAS_ERROR" = true ]; then
-        echo "  WARNING: Installation FAILED with errors — review above"
-    else
-        echo "  WARNING: Installation did not reach completion — review above"
-    fi
-else
-    echo "  WARNING: Installation log not found at $LOG_FILE"
-    echo "           (install_sketchup.ps1 may not have completed yet,"
-    echo "            or the shared volume mount may not be accessible)"
-fi
-
 # ---------------------------------------------------------------------------
-# Phase 3: Wait for SketchUp + plugin server
+# Phase 3: Wait for SketchUp + plugin server (using new tools)
 # ---------------------------------------------------------------------------
 echo ""
 echo "=== Phase 3: Wait for SketchUp + plugin ==="
-PLUGIN_READY=false
 
-# First polling window: just check (SketchUp might already be running)
-echo "  Checking for plugin at ${HOST}:${PORT}..."
-for i in $(seq 1 60); do
-    if curl -s --connect-timeout 2 "http://$HOST:$PORT/status" >/dev/null 2>&1; then
-        echo "  Plugin ready after ${i}s (already running)"
-        PLUGIN_READY=true
-        break
-    fi
-    sleep 1
-done
+if [[ -x "$SCRIPTS_DIR/wait-for-plugin.sh" ]]; then
+    echo "  Using wait-for-plugin.sh (progressive diagnostics)..."
+    if "$SCRIPTS_DIR/wait-for-plugin.sh" --host "$HOST" --port "$PORT" --timeout "$MAX_WAIT"; then
+        echo "  Plugin ready"
+    else
+        echo "  Plugin not ready yet — attempting install..."
 
-# If not ready after 60s, try launching SketchUp via QEMU keystrokes
-if [ "$PLUGIN_READY" = false ]; then
-    echo "  Plugin not responding after 60s — attempting to launch SketchUp..."
-    docker exec "$CONTAINER" perl /shared/scripts/launch_sketchup.pl
-    echo "  Keystrokes sent, continuing to poll..."
-
-    # Second polling window (another 60s)
-    for i in $(seq 1 60); do
-        if curl -s --connect-timeout 2 "http://$HOST:$PORT/status" >/dev/null 2>&1; then
-            echo "  Plugin ready after $((60 + i))s"
-            PLUGIN_READY=true
-            break
+        # Try to install/reinstall the plugin
+        if [[ -x "$SCRIPTS_DIR/sketchup-install.sh" ]]; then
+            "$SCRIPTS_DIR/sketchup-install.sh" --plugin-only
         fi
-        if [ "$i" -eq 60 ]; then
-            echo "ERROR: Plugin did not start within ${MAX_WAIT}s total"
+
+        # One more wait
+        echo "  Waiting again after install attempt..."
+        if "$SCRIPTS_DIR/wait-for-plugin.sh" --host "$HOST" --port "$PORT" --timeout 120; then
+            echo "  Plugin ready after re-install"
+        else
             echo ""
+            echo "ERROR: Plugin did not start within ${MAX_WAIT}s total"
             echo "Possible causes:"
             echo "  1. SketchUp may not be installed in the VM (check OEM installation)"
-            echo "  2. The SketchUp Link plugin may not be installed (check shared/sketchup-link-extracted/)"
+            echo "  2. The SketchUp Link plugin may not be installed"
             echo "  3. Port $PORT may not be forwarded (check compose.yml USER_PORTS)"
             echo "  4. Windows Firewall (check if install.bat ran)"
             echo "  5. GPU issues inside the VM"
             echo ""
             echo "Diagnostic commands:"
             echo "  docker compose -f $COMPOSE_FILE logs $CONTAINER --tail 50"
-            echo "  docker compose -f $COMPOSE_FILE exec -T $CONTAINER cmd /c 'echo OEM scripts status'"
             echo "  curl http://127.0.0.1:$PORT/status"
-            echo "  # RDP into VM: make rdp-connect (or use any RDP client to localhost:3389)"
+            echo "  integration/scripts/win-check.sh --sketchup-ready"
+            echo "  integration/scripts/sketchup-install.sh --status"
             exit 1
+        fi
+    fi
+else
+    # Fallback to old polling method
+    echo "  wait-for-plugin.sh not available — using fallback polling"
+    PLUGIN_READY=false
+
+    echo "  Checking for plugin at ${HOST}:${PORT}..."
+    for i in $(seq 1 60); do
+        if curl -s --connect-timeout 5 --max-time 10 "http://$HOST:$PORT/status" >/dev/null 2>&1; then
+            echo "  Plugin ready after ${i}s"
+            PLUGIN_READY=true
+            break
         fi
         sleep 1
     done
+
+    if [ "$PLUGIN_READY" = false ]; then
+        echo "  Plugin not responding after 60s — attempting to launch SketchUp..."
+        docker exec "$CONTAINER" perl /shared/scripts/launch_sketchup.pl
+        echo "  Keystrokes sent, continuing to poll..."
+
+        for i in $(seq 1 60); do
+            if curl -s --connect-timeout 5 --max-time 10 "http://$HOST:$PORT/status" >/dev/null 2>&1; then
+                echo "  Plugin ready after $((60 + i))s"
+                PLUGIN_READY=true
+                break
+            fi
+            if [ "$i" -eq 60 ]; then
+                echo "ERROR: Plugin did not start within ${MAX_WAIT}s total"
+                exit 1
+            fi
+            sleep 1
+        done
+    fi
 fi
 
 # ---------------------------------------------------------------------------
-# Phase 4: Verify /screenshot endpoint + create test model
+# Phase 4: Verify endpoint + create test model (using win-check.sh)
 # ---------------------------------------------------------------------------
 echo ""
 echo "=== Phase 4: Verify endpoint + create test model ==="
 
-echo "  Checking /screenshot endpoint..."
-HTTP_CHECK=$(curl -s -o /dev/null -w "%{http_code}" "http://$HOST:$PORT/screenshot")
-if [ "$HTTP_CHECK" = "404" ]; then
-    echo "ERROR: Plugin is outdated — missing /screenshot endpoint."
-    echo "  Rebuild the plugin and re-install in the VM:"
-    echo "    cd $PLUGIN_DIR && ruby package.rb"
-    echo "    Then re-extract to $EXTRACT_DIR"
-    exit 1
+if [[ -x "$SCRIPTS_DIR/win-check.sh" ]]; then
+    echo "  Using win-check.sh --plugin-http..."
+    if "$SCRIPTS_DIR/win-check.sh" --plugin-http; then
+        echo "  Plugin endpoint verified"
+    else
+        # Fallback: direct curl check
+        echo "  win-check plugin check failed — trying direct curl..."
+        HTTP_CHECK=$(curl -s -o /dev/null -w "%{http_code}" "http://$HOST:$PORT/screenshot" 2>/dev/null || echo "000")
+        if [ "$HTTP_CHECK" = "200" ] || [ "$HTTP_CHECK" = "404" ]; then
+            echo "  /screenshot returns HTTP $HTTP_CHECK (OK)"
+        else
+            echo "WARNING: /screenshot returned HTTP $HTTP_CHECK"
+        fi
+    fi
+else
+    echo "  win-check.sh not available — using direct curl..."
+    HTTP_CHECK=$(curl -s -o /dev/null -w "%{http_code}" "http://$HOST:$PORT/screenshot")
+    if [ "$HTTP_CHECK" = "404" ]; then
+        echo "ERROR: Plugin is outdated — missing /screenshot endpoint."
+        echo "  Rebuild the plugin and re-install in the VM:"
+        echo "    cd $PLUGIN_DIR && ruby package.rb"
+        echo "    Then re-extract to $EXTRACT_DIR"
+        exit 1
+    fi
+    echo "  /screenshot returns HTTP $HTTP_CHECK (OK)"
 fi
-echo "  /screenshot returns HTTP $HTTP_CHECK (OK)"
 
 echo "  Creating test model..."
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://$HOST:$PORT/test_model")
@@ -251,7 +271,7 @@ for i in $(seq 1 30); do
     sleep 1
 done
 
-# Ensure screenshots directory exists on host (shared volume mount target)
+# Ensure screenshots directory exists on host
 mkdir -p "$SCREENSHOTS_HOST_DIR"
 
 # ---------------------------------------------------------------------------
@@ -262,8 +282,7 @@ echo "=== Phase 6: Run TCP-mode BDD tests ==="
 
 cd "$PLUGIN_DIR"
 
-# Explicit file list guarantees only TCP-mode tests run (no Unix-socket tests
-# that would fail without a Ruby mock server).
+# Explicit file list guarantees only TCP-mode tests run
 set +e  # Don't exit on test failure — we want to report results
 uv run pytest \
     tests/bdd/test_live_sync_tcp_scenarios.py \
