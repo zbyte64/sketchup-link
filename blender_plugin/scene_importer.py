@@ -49,7 +49,7 @@ from .skp_util import (
     keep_offset,
     proxy_dict,
 )
-from .live_adapter import DEFAULT_SOCKET_PATH, JsonModel, fetch_model_json
+from .live_adapter import DEFAULT_SOCKET_PATH, JsonModel, fetch_model_json, _build_conn_config
 from .preferences import SketchupAddonPreferences
 
 
@@ -1053,11 +1053,7 @@ class LiveImportSKP(Operator):
     bl_label = "Import from SketchUp (Live)"
     bl_options = {"REGISTER", "UNDO"}
 
-    socket_path: StringProperty(
-        name="Socket Path",
-        description="Path to the sketchup-link Unix domain socket",
-        default=DEFAULT_SOCKET_PATH,
-    )
+
 
     scenes_as_camera: BoolProperty(name="Scene(s) As Camera(s)", default=False)
     import_camera: BoolProperty(name="Last View As Camera", default=False)
@@ -1073,16 +1069,18 @@ class LiveImportSKP(Operator):
     import_scene: StringProperty(name="Import A Scene", default="")
 
     def execute(self, context):
+        # Read connection config from addon preferences
+        prefs = context.preferences.addons[__package__].preferences
+        conn_config = _build_conn_config(prefs)
         try:
-            model_json = fetch_model_json(self.socket_path)
+            model_json = fetch_model_json(conn_config=conn_config)
         except Exception as e:
             self.report({"ERROR"}, f"Cannot reach sketchup-link: {e}")
             return {"CANCELLED"}
 
         importer = SceneImporter()
         importer.set_filename("")
-        importer.skp_model = JsonModel(model_json)
-
+        importer.skp_model = JsonModel(model_json, conn_config=conn_config)
         options = dict(
             filepath="",
             scenes_as_camera=self.scenes_as_camera,
@@ -1098,7 +1096,6 @@ class LiveImportSKP(Operator):
 
     def draw(self, context):
         layout = self.layout
-        layout.prop(self, "socket_path")
         layout.prop(self, "reuse_material")
         layout.prop(self, "dedub_only")
         layout.prop(self, "reuse_existing_groups")

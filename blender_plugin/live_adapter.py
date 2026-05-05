@@ -41,8 +41,59 @@ class _UnixSocketHTTPConnection(http.client.HTTPConnection):
         self.sock = s
 
 
-def fetch_model_json(socket_path=DEFAULT_SOCKET_PATH):
-    """GET /model over the Unix socket. Returns the parsed JSON dict."""
+
+# ---------------------------------------------------------------------------
+# Unified connection config
+# ---------------------------------------------------------------------------
+
+def _build_conn_config(prefs=None):
+    """Build a connection config dict from addon preferences (or sensible defaults).
+
+    Returns a dict with keys: mode, socket_path, host, port, binary_textures.
+    When prefs is None (e.g., during testing), falls back to Unix defaults.
+    """
+    if prefs is None:
+        return {
+            "mode": "UNIX",
+            "socket_path": DEFAULT_SOCKET_PATH,
+            "host": TCP_DEFAULT_HOST,
+            "port": TCP_DEFAULT_PORT,
+            "binary_textures": False,
+        }
+    return {
+        "mode": getattr(prefs, "connection_mode", "UNIX"),
+        "socket_path": getattr(prefs, "socket_path", DEFAULT_SOCKET_PATH),
+        "host": getattr(prefs, "tcp_host", TCP_DEFAULT_HOST),
+        "port": getattr(prefs, "tcp_port", TCP_DEFAULT_PORT),
+        "binary_textures": getattr(prefs, "binary_textures", False),
+    }
+
+
+def fetch_model_json(conn_config=None, socket_path=None):
+    """Fetch the model JSON from SketchUp.
+
+    Args:
+        conn_config: dict with mode/socket_path/host/port/binary_textures.
+                     If None, reads from addon preferences.
+                     (Also accepts a string socket path for backward compat.)
+        socket_path: backward-compat positional arg — used when conn_config
+                     is also None, or as an override.
+
+    Returns the parsed JSON dict.
+    """
+    if isinstance(conn_config, str):
+        # Backward compat: fetch_model_json(socket_path_string)
+        return _fetch_model_json_unix(conn_config)
+    if socket_path is not None:
+        # Backward compat: explicit socket path overrides everything
+        return _fetch_model_json_unix(socket_path)
+    if conn_config is None:
+        conn_config = _build_conn_config()
+    if conn_config["mode"] == "UNIX":
+        return _fetch_model_json_unix(conn_config["socket_path"])
+    return fetch_model_json_tcp(conn_config["host"], conn_config["port"], conn_config.get("binary_textures", False))
+def _fetch_model_json_unix(socket_path):
+    """GET /model over Unix socket."""
     conn = _UnixSocketHTTPConnection(socket_path)
     try:
         conn.request("GET", "/model")
@@ -53,18 +104,34 @@ def fetch_model_json(socket_path=DEFAULT_SOCKET_PATH):
     finally:
         conn.close()
 
-def fetch_model_json_tcp(host=TCP_DEFAULT_HOST, port=TCP_DEFAULT_PORT):
-    """GET /model over TCP/IP. Returns the parsed JSON dict."""
+
+def fetch_texture_binary(host, port, texture_id):
+    """GET /texture/<texture_id> over TCP. Returns raw PNG bytes."""
+    import urllib.parse
+    encoded = urllib.parse.quote(texture_id, safe="")
     conn = http.client.HTTPConnection(host, port)
     try:
-        conn.request("GET", "/model")
+        conn.request("GET", f"/texture/{encoded}")
+        resp = conn.getresponse()
+        if resp.status != 200:
+            raise RuntimeError(f"texture fetch returned HTTP {resp.status}")
+        return resp.read()
+    finally:
+        conn.close()
+
+
+def fetch_model_json_tcp(host=TCP_DEFAULT_HOST, port=TCP_DEFAULT_PORT, binary_textures=False):
+    """GET /model over TCP/IP, with optional binary_textures query param."""
+    path = "/model?binary_textures=true" if binary_textures else "/model"
+    conn = http.client.HTTPConnection(host, port)
+    try:
+        conn.request("GET", path)
         resp = conn.getresponse()
         if resp.status != 200:
             raise RuntimeError(f"sketchup-link returned HTTP {resp.status}")
         return json.loads(resp.read())
     finally:
         conn.close()
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -108,9 +175,9 @@ class _JsonTexture:
 
     Matches the interface expected by SceneImporter.write_materials().
     """
-
-    def __init__(self, d):
+    def __init__(self, d, binary_source=None):
         self._d = d
+        self._binary_source = binary_source  # (host, port, texture_id) tuple or None
 
     @property
     def name(self):
@@ -127,12 +194,23 @@ class _JsonTexture:
         )
 
     def write(self, path):
+        if self._binary_source:
+            host, port, texture_id = self._binary_source
+            try:
+                png_data = fetch_texture_binary(host, port, texture_id)
+            except Exception as exc:
+                import sys
+                print(f"[sketchup-link] failed to fetch binary texture '{texture_id}': {exc}", file=sys.stderr)
+                return
+            with open(path, "wb") as f:
+                f.write(png_data)
+            return
+        # Fall back to base64-embedded data
         import base64
         data = self._d.get("data", "")
         if data:
             with open(path, "wb") as f:
                 f.write(base64.b64decode(data))
-
 
 class _JsonColor:
     """Iterable (r, g, b, a) — supports `r, g, b, a = mat.color` unpacking."""
@@ -149,9 +227,10 @@ class _JsonColor:
 
 class JsonMaterial:
     """Wraps a material dict."""
-
-    def __init__(self, d):
+    def __init__(self, d, conn_config=None):
         self._d = d
+        self._conn_config = conn_config
+
 
     @property
     def name(self):
@@ -169,6 +248,12 @@ class JsonMaterial:
     def texture(self):
         d = self._d.get("texture")
         if d:
+            texture_id = d.get("texture_id")
+            if texture_id and self._conn_config:
+                host = self._conn_config.get("host")
+                port = self._conn_config.get("port")
+                if host and port:
+                    return _JsonTexture(d, binary_source=(host, port, texture_id))
             return _JsonTexture(d)
         return None
 
@@ -412,8 +497,9 @@ class JsonModel:
     the same interface as sketchup.Model (the Cython SLAPI binding).
     """
 
-    def __init__(self, d):
+    def __init__(self, d, conn_config=None):
         self._d = d
+        self._conn_config = conn_config
 
     @property
     def entities(self):
@@ -421,7 +507,7 @@ class JsonModel:
 
     @property
     def materials(self):
-        return [JsonMaterial(m) for m in self._d.get("materials", [])]
+        return [JsonMaterial(m, conn_config=self._conn_config) for m in self._d.get("materials", [])]
 
     @property
     def component_definition_as_dict(self):

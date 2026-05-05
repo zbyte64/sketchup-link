@@ -89,7 +89,8 @@ module SketchupLink
         payload = Serializer::ModelSerializer.serialize(
           Sketchup.active_model,
           Serializer::EntitySerializer,
-          no_textures: opts[:no_textures]
+          no_textures: opts[:no_textures],
+          binary_textures: opts[:binary_textures]
         )
         respond(client, 200, JSON.generate(payload))
         remove_client(client)
@@ -137,6 +138,34 @@ module SketchupLink
           end
         else
           respond(client, 400, JSON.generate('error' => 'no active model'))
+        end
+        remove_client(client)
+      when /\AGET \/texture\/([^\s\/]+)/
+        texture_name = Regexp.last_match(1)
+        model = Sketchup.active_model
+        unless model
+          respond(client, 400, JSON.generate('error' => 'no active model'))
+          remove_client(client)
+          return
+        end
+        material = model.materials[texture_name]
+        unless material && material.texture
+          respond(client, 404, JSON.generate('error' => "texture not found for material: #{texture_name}"))
+          remove_client(client)
+          return
+        end
+        begin
+          tex = material.texture
+          tmp = Tempfile.new(['sketchup_texture', '.png'])
+          tmp_path = tmp.path
+          tmp.close
+          tex.write(tmp_path)
+          png_data = File.binread(tmp_path)
+          respond_binary(client, 200, png_data, 'image/png')
+        rescue => e
+          respond(client, 500, JSON.generate('error' => "texture fetch failed: #{e.message}"))
+        ensure
+          File.delete(tmp_path) rescue nil
         end
         remove_client(client)
       when /\APOST \/test_model(\s|\z)/
@@ -227,6 +256,8 @@ module SketchupLink
         case key
         when 'no_textures'
           opts[:no_textures] = value == 'true'
+        when 'binary_textures'
+          opts[:binary_textures] = value == 'true'
         end
       end
       opts
