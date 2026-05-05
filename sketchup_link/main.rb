@@ -14,6 +14,7 @@ require_relative 'subscription_manager'
 require_relative 'event_dispatcher'
 require_relative 'server'
 require_relative 'plugin'
+require_relative 'remote_control'
 
 file_loaded(__FILE__)
 

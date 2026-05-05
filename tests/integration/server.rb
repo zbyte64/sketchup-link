@@ -42,6 +42,105 @@ rescue Errno::EPIPE, IOError
   # client disconnected — ignore
 end
 
+# ---------------------------------------------------------------------------
+# Mock remote control handlers
+# ---------------------------------------------------------------------------
+
+def parse_json_body(client, body_json)
+  return {} if body_json.nil? || body_json.strip.empty?
+  JSON.parse(body_json)
+rescue JSON::ParserError
+  respond(client, 400, JSON.generate({ 'error' => 'invalid JSON body' }))
+  nil
+end
+
+def handle_control(client, path, body_json)
+  params = parse_json_body(client, body_json)
+  return unless params  # parse error already responded
+
+  sub_path = path.sub(%r{^/control/}, '')
+  response = control_mock_response(sub_path, params)
+  respond(client, response[0], JSON.generate(response[1]))
+end
+
+def control_mock_response(sub_path, params)
+  case sub_path
+  # Camera
+  when 'camera'
+    required = %w[eye target up]
+    missing = required.select { |k| params[k].nil? }
+    return [400, { 'error' => "missing required field: #{missing.first}" }] unless missing.empty?
+    [200, { 'ok' => true }]
+
+  when 'camera/zoom'
+    return [400, { 'error' => 'missing required field: factor' }] unless params['factor']
+    [200, { 'ok' => true }]
+
+  # Layers
+  when 'layer'
+    return [400, { 'error' => 'missing required field: name' }] unless params['name']
+    [200, { 'ok' => true }]
+
+  # Plugins
+  when 'plugin'
+    return [400, { 'error' => 'missing required field: name' }] unless params['name']
+    return [400, { 'error' => 'missing required field: enabled' }] if params['enabled'].nil?
+    return [404, { 'error' => "extension not found: #{params['name']}" }] if params['name'] == 'NonExistentExtension'
+    [200, { 'ok' => true, 'note' => 'extension changes may require a SketchUp restart' }]
+
+  # Texture
+  when 'texture'
+    return [400, { 'error' => 'missing required field: material_name' }] unless params['material_name']
+    return [400, { 'error' => 'missing required field: file_path' }] unless params['file_path']
+    return [400, { 'error' => "texture file not found: #{params['file_path']}" }] unless File.exist?(params['file_path'])
+    [200, { 'ok' => true, 'material' => { 'name' => params['material_name'], 'texture' => params['file_path'] } }]
+
+  # Material
+  when 'material'
+    return [400, { 'error' => 'missing required field: name' }] unless params['name']
+    [200, { 'ok' => true }]
+
+  when 'material/delete'
+    return [400, { 'error' => 'missing required field: name' }] unless params['name']
+    [200, { 'ok' => true }]
+
+  # Geometry
+  when 'geometry/face'
+    return [400, { 'error' => 'missing required field: points' }] unless params['points']
+    [200, { 'ok' => true, 'persistent_id' => 42_001 }]
+
+  when 'geometry/edge'
+    return [400, { 'error' => 'missing required field: start' }] unless params['start']
+    return [400, { 'error' => 'missing required field: end' }] unless params['end']
+    [200, { 'ok' => true, 'persistent_id' => 42_002 }]
+
+  when 'geometry/group'
+    [200, { 'ok' => true, 'persistent_id' => 42_003 }]
+
+  when 'geometry/component'
+    return [400, { 'error' => 'missing required field: definition_name' }] unless params['definition_name']
+    [200, { 'ok' => true, 'persistent_id' => 42_004 }]
+
+  when 'geometry/delete'
+    return [400, { 'error' => 'missing required field: persistent_id' }] unless params['persistent_id']
+    [200, { 'ok' => true }]
+
+  when 'geometry/transform'
+    return [400, { 'error' => 'missing required field: persistent_id' }] unless params['persistent_id']
+    return [400, { 'error' => 'missing required field: transformation' }] unless params['transformation']
+    [200, { 'ok' => true }]
+
+  # Model
+  when 'model/clear'
+    [200, { 'ok' => true }]
+
+  when 'model/new'
+    [200, { 'ok' => true }]
+
+  else
+    [404, { 'error' => "unknown control path: #{sub_path}" }]
+  end
+end
 def handle_client(client)
   buf = +''
   loop do
@@ -59,9 +158,16 @@ def handle_client(client)
   end
 
   request_line = buf.lines.first.to_s.strip
+  method = request_line.split(' ').first || 'GET'
+  path = request_line.split(' ')[1] || '/'
 
-  if request_line.start_with?('GET /model')
+  if method == 'GET' && path == '/model'
     respond(client, 200, MODEL_JSON)
+  elsif method == 'POST' && path.start_with?('/control/')
+    # Extract the body after headers
+    body_start = buf.index("\r\n\r\n")
+    body_json = body_start ? buf[(body_start + 4)..] : ''
+    handle_control(client, path, body_json)
   else
     respond(client, 404, JSON.generate({ 'error' => 'not found' }))
   end

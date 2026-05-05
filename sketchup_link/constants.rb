@@ -28,4 +28,5 @@ module SketchupLink
     EVT_SELECTION_CHANGE,   EVT_MATERIALS_CHANGE, EVT_LAYERS_CHANGE,
     EVT_MODEL_SAVE,         EVT_MODEL_OPEN,       EVT_MODEL_CLOSE
   ].freeze
+  REMOTE_CONTROL_ENABLED = true.freeze
 end

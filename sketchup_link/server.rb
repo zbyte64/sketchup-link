@@ -155,6 +155,20 @@ module SketchupLink
           remove_client(client)
         end
 
+      when /\APOST \/control\/(.+)(\s|\z)/
+        sub_path = Regexp.last_match(1)
+        body = _body
+        params = begin
+                    body.nil? || body.strip.empty? ? {} : JSON.parse(body)
+                  rescue JSON::ParserError
+                    respond(client, 400, JSON.generate('error' => 'invalid JSON body'))
+                    remove_client(client)
+                    return
+                  end
+        status, response = RemoteControl.handle(sub_path, params)
+        respond(client, status, JSON.generate(response))
+        remove_client(client)
+
       else
         respond(client, 404, JSON.generate('error' => 'not found'))
         remove_client(client)
