@@ -23,6 +23,8 @@ SHARED_DIR="$(cd "$SCRIPT_DIR/../shared" && pwd)"
 
 PLUGIN_ONLY=false
 STATUS_ONLY=false
+AUTO_START=false
+AUTO_START_REMOVE=false
 
 # Windows-side paths (backslash)
 SU_EXE='C:\Program Files\SketchUp\SketchUp 2025\SketchUp\SketchUp.exe'
@@ -410,6 +412,86 @@ launch_sketchup() {
         return 1
     fi
 }
+# ---------------------------------------------------------------------------
+# Auto-start Scripts
+# ---------------------------------------------------------------------------
+auto_start() {
+    log "=== Deploying auto-start scripts ==="
+
+    local vbs_src="$SCRIPT_DIR/../oem/launch_sketchup.vbs"
+    local ps1_src="$SCRIPT_DIR/../oem/launch_sketchup.ps1"
+
+    # Validate source files exist on host
+    if [[ ! -f "$vbs_src" ]]; then
+        die "launch_sketchup.vbs not found at $vbs_src"
+    fi
+    if [[ ! -f "$ps1_src" ]]; then
+        die "launch_sketchup.ps1 not found at $ps1_src"
+    fi
+
+    # Step 1: Copy VBS/PS1 into shared folder so Windows can access them
+    log "  Copying source files to shared folder..."
+    cp "$vbs_src" "$SHARED_DIR/.launch_sketchup.vbs"
+    cp "$ps1_src" "$SHARED_DIR/.launch_sketchup.ps1"
+
+    local startup_path='C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp'
+    local oem_path='C:\OEM'
+    local shared_win='C:\Users\Docker\Desktop\Shared'
+
+    # Step 2: Deploy PS1 to C:\OEM\ (persistent)
+    log "  Deploying launch_sketchup.ps1 to $oem_path..."
+    "$WIN_EXEC" --timeout 60 \
+        "powershell -Command \"& { mkdir '${oem_path}' -Force | Out-Null; Copy-Item '${shared_win}\.launch_sketchup.ps1' '${oem_path}\launch_sketchup.ps1' -Force; if (Test-Path '${oem_path}\launch_sketchup.ps1') { Write-Output OEM_PS1_OK } else { Write-Output OEM_PS1_FAIL } }\"" \
+        ".auto_start_ps1_$$.txt" 2>/dev/null || true
+
+    local ps1_result
+    ps1_result=$(cat "$SHARED_DIR/.auto_start_ps1_$$.txt" 2>/dev/null || echo "")
+    rm -f "$SHARED_DIR/.auto_start_ps1_$$.txt" "$SHARED_DIR/.auto_start_ps1_$$.txt.exitcode" 2>/dev/null || true
+
+    if echo "$ps1_result" | grep -q "OEM_PS1_OK"; then
+        pass "launch_sketchup.ps1 deployed to $oem_path"
+    else
+        warn "launch_sketchup.ps1 deployment result: $ps1_result"
+    fi
+
+    # Step 3: Deploy VBS to startup folder
+    log "  Deploying launch_sketchup.vbs to startup folder..."
+    "$WIN_EXEC" --timeout 30 \
+        "powershell -Command \"& { Copy-Item '${shared_win}\.launch_sketchup.vbs' '${startup_path}\launch_sketchup.vbs' -Force; if (Test-Path '${startup_path}\launch_sketchup.vbs') { Write-Output VBS_OK } else { Write-Output VBS_FAIL } }\"" \
+        ".auto_start_vbs_$$.txt" 2>/dev/null || true
+
+    local vbs_result
+    vbs_result=$(cat "$SHARED_DIR/.auto_start_vbs_$$.txt" 2>/dev/null || echo "")
+    rm -f "$SHARED_DIR/.auto_start_vbs_$$.txt" "$SHARED_DIR/.auto_start_vbs_$$.txt.exitcode" 2>/dev/null || true
+
+    if echo "$vbs_result" | grep -q "VBS_OK"; then
+        pass "launch_sketchup.vbs deployed to startup folder"
+    else
+        warn "launch_sketchup.vbs deployment result: $vbs_result"
+    fi
+
+    # Clean up temp files from shared folder
+    rm -f "$SHARED_DIR/.launch_sketchup.vbs" "$SHARED_DIR/.launch_sketchup.ps1" 2>/dev/null || true
+
+    log "Auto-start deployment complete"
+}
+
+auto_start_remove() {
+    log "=== Removing auto-start scripts ==="
+
+    local startup_path='C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp'
+    local oem_path='C:\OEM'
+
+    "$WIN_EXEC" --timeout 30 \
+        "cmd /c del \"${startup_path}\\launch_sketchup.vbs\" 2>nul & del \"${oem_path}\\launch_sketchup.ps1\" 2>nul & echo REMOVED" \
+        ".auto_start_rm_$$.txt" 2>/dev/null || true
+
+    local result
+    result=$(cat "$SHARED_DIR/.auto_start_rm_$$.txt" 2>/dev/null || echo "")
+    rm -f "$SHARED_DIR/.auto_start_rm_$$.txt" "$SHARED_DIR/.auto_start_rm_$$.txt.exitcode" 2>/dev/null || true
+
+    pass "Auto-start scripts removed"
+}
 
 # ---------------------------------------------------------------------------
 # Main
@@ -423,11 +505,15 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --plugin-only) PLUGIN_ONLY=true; shift ;;
         --status)      STATUS_ONLY=true; shift ;;
+        --auto-start)  AUTO_START=true; shift ;;
+        --remove)      AUTO_START_REMOVE=true; shift ;;
         -h|--help)
-            echo "Usage: sketchup-install.sh [--plugin-only] [--status]"
+            echo "Usage: sketchup-install.sh [--plugin-only] [--status] [--auto-start [--remove]]"
             echo ""
-            echo "  --plugin-only   Only install/reinstall the SketchUp Link plugin"
-            echo "  --status        Check installation status only"
+            echo "  --plugin-only           Only install/reinstall the SketchUp Link plugin"
+            echo "  --status                Check installation status only"
+            echo "  --auto-start            Deploy auto-start scripts (SketchUp launches on Windows login)"
+            echo "  --auto-start --remove   Remove auto-start scripts"
             exit 0 ;;
         *) die "Unknown option: $1" ;;
     esac
@@ -446,6 +532,18 @@ if [[ "$PLUGIN_ONLY" == "true" ]]; then
     log "=== Installation complete ==="
     exit 0
 fi
+if [[ "$AUTO_START" == "true" ]]; then
+    echo ""
+    if [[ "$AUTO_START_REMOVE" == "true" ]]; then
+        auto_start_remove
+    else
+        auto_start
+    fi
+    echo ""
+    log "=== Done ==="
+    exit 0
+fi
+
 
 # Full install
 echo ""

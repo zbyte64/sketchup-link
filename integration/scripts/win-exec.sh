@@ -25,6 +25,7 @@ RDP_PASS="admin"
 SHARED_DIR="$(cd "$SCRIPT_DIR/../shared" && pwd)"
 CONTAINER="windows"
 NO_CONNECT=false
+FORCE_RECONNECT=false
 RDP_SESSION="sketchup-link"
 
 # ---------------------------------------------------------------------------
@@ -36,13 +37,17 @@ while [[ $# -gt 0 ]]; do
             TIMEOUT="$2"; shift 2 ;;
         --no-connect)
             NO_CONNECT=true; shift ;;
+        --force-reconnect)
+            FORCE_RECONNECT=true; shift ;;
         -h|--help)
-            echo "Usage: win-exec.sh [--timeout SECS] [--no-connect] <command> <output_filename>"
+            echo "Usage: win-exec.sh [--timeout SECS] [--no-connect] [--force-reconnect] <command> <output_filename>"
             echo ""
             echo "Runs <command> inside Windows via agent-rdp automate run."
             echo "Writes a PowerShell wrapper script to shared/, executes it,"
             echo "captures stdout+stderr into shared/<output_filename>"
             echo "and exit code into shared/<output_filename>.exitcode."
+            echo ""
+            echo "  --force-reconnect  Force RDP reconnect even if session is active"
             exit 0 ;;
         -*)
             echo "ERROR: Unknown option: $1"; exit 1 ;;
@@ -104,6 +109,15 @@ agent_rdp_cmd() {
 # Phase 1: Connect agent-rdp
 # ---------------------------------------------------------------------------
 if [[ "$NO_CONNECT" != "true" ]]; then
+    # Force reconnect: disconnect first if requested
+    if [[ "$FORCE_RECONNECT" == "true" ]]; then
+        if agent_rdp_cmd --session "$RDP_SESSION" session info &>/dev/null; then
+            log "Force reconnect requested — disconnecting existing session"
+            agent_rdp_cmd --session "$RDP_SESSION" disconnect 2>/dev/null || true
+            sleep 1
+        fi
+    fi
+
     if agent_rdp_cmd --session "$RDP_SESSION" session info &>/dev/null; then
         log "agent-rdp session '$RDP_SESSION' already connected"
     else

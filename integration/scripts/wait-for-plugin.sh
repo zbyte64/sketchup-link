@@ -6,11 +6,12 @@
 #   wait-for-plugin.sh --host 127.0.0.1 --port 9876 --timeout 300
 #   wait-for-plugin.sh                          # Uses defaults
 #
-# Progressive diagnostics:
-#   - After 30s: takes QEMU screenshot
-#   - After 60s: checks SketchUp process, plugin file, and port
-#   - After 90s: attempts auto-remediation (launch SketchUp, re-install plugin)
-#   - On timeout: collects full diagnostic report
+sl|# Progressive diagnostics:
+se|#   - Every poll: checks sentinel file (sketchup_status.json from launch_sketchup.ps1)
+hy|#   - After 30s: takes QEMU screenshot
+ll|#   - After 60s: checks SketchUp process, plugin file, and port
+ad|#   - After 90s: attempts auto-remediation (launch SketchUp, re-install plugin)
+ib|#   - On timeout: collects full diagnostic report
 
 set -euo pipefail
 
@@ -22,6 +23,7 @@ WIN_EXEC="$SCRIPT_DIR/win-exec.sh"
 WIN_CHECK="$SCRIPT_DIR/win-check.sh"
 WIN_SCREENSHOT="$SCRIPT_DIR/win-screenshot.sh"
 
+SHARED_DIR="$(cd "$SCRIPT_DIR/../shared" && pwd)"
 HOST="127.0.0.1"
 PORT="9876"
 TIMEOUT=300          # total timeout in seconds
@@ -227,6 +229,15 @@ while true; do
         log "Plugin READY after ${ELAPSED}s (HTTP $status_code)"
         echo ""
         return 0
+    fi
+
+    # Also check for sentinel file in shared folder (written by launch_sketchup.ps1)
+    sentinel="$SHARED_DIR/sketchup_status.json"
+    if [[ -f "$sentinel" ]]; then
+        sentinel_status=$(grep -o '"status":"[^"]*"' "$sentinel" 2>/dev/null | cut -d'"' -f4 || echo "")
+        if [[ "$sentinel_status" == "ready" ]] || [[ "$sentinel_status" == "running" ]]; then
+            log "Sentinel file reports status: $sentinel_status after ${ELAPSED}s"
+        fi
     fi
 
     # Progressive diagnostics
