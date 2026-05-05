@@ -345,8 +345,15 @@ suppress_eula() {
 New-Item -ItemType Directory -Force -Path \$prefsDir | Out-Null;
 \$prefs = @{
     'This Computer Only' = @{
-        'Application' = @{ 'RunCounterSU' = 0 };
-        'Common' = @{ 'AcceptedTerms' = \$true };
+        'Application' = @{
+            'RunCounterSU' = 0;
+            'ShowWelcomeScreen' = \$false;
+            'ShowEULAOnStartup' = \$false;
+        };
+        'Common' = @{
+            'AcceptedTerms' = \$true;
+            'LicenseAgreed' = \$true;
+        };
     }
 };
 \$prefs | ConvertTo-Json | Out-File -FilePath \$prefsFile -Encoding UTF8 -Force;
@@ -416,6 +423,42 @@ launch_sketchup() {
             fi
             sleep 2
         done
+    # After process starts, check for ToS dialog via agent-rdp
+    log "Checking for ToS/EULA dialog after launch..."
+    if command -v agent-rdp &>/dev/null; then
+        sleep 5
+        for search_term in "Agree" "Accept" "I Agree" "Terms" "License"; do
+            if agent-rdp --session sketchup-link locate "$search_term" &>/dev/null; then
+                log "  Found '$search_term' on screen — dismissing dialog..."
+                local box x y cx cy
+                if box=$(agent-rdp --session sketchup-link locate "$search_term" 2>/dev/null); then
+                    x=$(echo "$box" | grep -oP '(?<=\()\d+' | head -1)
+                    y=$(echo "$box" | grep -oP '(?<=,\s*)\d+' | head -1)
+                    if [[ -n "$x" && -n "$y" ]]; then
+                        cx=$((x + 10))
+                        cy=$((y + 10))
+                        agent-rdp --session sketchup-link mouse click "$cx" "$cy" 2>/dev/null || true
+                        log "  Clicked '$search_term' at approx ($cx, $cy)"
+                        sleep 5
+                        break
+                    fi
+                fi
+                # Fallback: Tab+Enter
+                agent-rdp --session sketchup-link keyboard press "tab" 2>/dev/null || true
+                sleep 0.5
+                agent-rdp --session sketchup-link keyboard press "tab" 2>/dev/null || true
+                sleep 0.5
+                agent-rdp --session sketchup-link keyboard press "tab" 2>/dev/null || true
+                sleep 0.5
+                agent-rdp --session sketchup-link keyboard press "enter" 2>/dev/null || true
+                sleep 5
+                log "  ToS dialog dismissed via keyboard"
+                break
+            fi
+        done
+    else
+        log "  agent-rdp not available — skipping ToS check"
+    fi
     fi
 
     # Wait for plugin to start

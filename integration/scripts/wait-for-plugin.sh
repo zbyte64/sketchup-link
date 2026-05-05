@@ -9,8 +9,9 @@
 # Progressive diagnostics:
 #   - Every poll: checks sentinel file (sketchup_status.json from launch_sketchup.ps1)
 #   - After 30s: takes QEMU screenshot
+#   - After 35s: checks for ToS/EULA dialog and dismisses it
 #   - After 60s: checks SketchUp process, plugin file, and port
-#   - After 90s: attempts auto-remediation (launch SketchUp, re-install plugin)
+#   - After 90s: attempts auto-remediation (dismiss ToS, launch SketchUp, re-install plugin)
 #   - On timeout: collects full diagnostic report
 
 set -euo pipefail
@@ -35,7 +36,8 @@ CONTAINER="windows"
 DIAG_DIR="$SCRIPT_DIR/diagnostics"
 START_TIME=""
 DIAG_COLLECTED=false
-
+TOS_CHECKED=false
+LAUNCH_ATTEMPTED=false
 # ---------------------------------------------------------------------------
 # Parse args
 # ---------------------------------------------------------------------------
@@ -207,6 +209,68 @@ attempt_launch_sketchup() {
     log "  WARNING: Failed to launch SketchUp"
     return 1
 }
+# ---------------------------------------------------------------------------
+# ToS / EULA dialog dismissal
+# ---------------------------------------------------------------------------
+dismiss_tos_dialog() {
+    log "Checking for Terms of Service / EULA dialog..."
+    local found=false
+    local box x y cx cy
+
+    # Try multiple search terms for the dialog button and window title
+    for search_term in "Agree" "Accept" "I Agree" "Terms" "License" "EULA"; do
+        if box=$(agent-rdp --session sketchup-link locate "$search_term" 2>/dev/null); then
+            log "  Found '$search_term' on screen — dismissing dialog"
+            # Parse numeric coordinates from locate output
+            # Output format: "Agree" found at (123,456)-(789,012)
+            # Extract first number (x) and second number (y) from the first coordinate pair
+            x=$(echo "$box" | grep -oP '(?<=\()\d+' | head -1)
+            y=$(echo "$box" | grep -oP '(?<=,\s*)\d+' | head -1)
+            if [[ -n "$x" && -n "$y" ]]; then
+                cx=$((x + 10))
+                cy=$((y + 10))
+                agent-rdp --session sketchup-link mouse click "$cx" "$cy" 2>/dev/null || true
+                log "  Clicked '$search_term' at approx ($cx, $cy)"
+                found=true
+                break
+            fi
+        fi
+    done
+
+    if [[ "$found" == "true" ]]; then
+        sleep 5
+        log "  ToS dialog dismissed, re-checking plugin..."
+        return 0
+    fi
+
+    # Fallback: Tab to navigate to default button + Enter
+    log "  Trying Tab+Enter fallback..."
+    agent-rdp --session sketchup-link keyboard press "tab" 2>/dev/null || true
+    sleep 0.5
+    agent-rdp --session sketchup-link keyboard press "tab" 2>/dev/null || true
+    sleep 0.5
+    agent-rdp --session sketchup-link keyboard press "tab" 2>/dev/null || true
+    sleep 0.5
+    agent-rdp --session sketchup-link keyboard press "enter" 2>/dev/null || true
+    sleep 3
+
+    # Brute-force Enter dismiss
+    log "  Brute-force Enter..."
+    agent-rdp --session sketchup-link keyboard press "enter" 2>/dev/null || true
+    sleep 3
+
+    # Also check for "SketchUp" title bar with "Not Responding" pattern
+    log "  Checking for 'Not Responding' title bars..."
+    if box=$(agent-rdp --session sketchup-link locate "Not Responding" 2>/dev/null); then
+        log "  Found 'Not Responding' — SketchUp may be hung"
+        screenshot_name=$(date '+%Y%m%d_%H%M%S')_not_responding
+        "$WIN_SCREENSHOT" --rdp "not_responding_${screenshot_name}" 2>/dev/null || true
+    fi
+
+    log "  ToS dismissal attempts completed"
+    return 0
+}
+
 
 # ---------------------------------------------------------------------------
 # Main poll loop
@@ -241,14 +305,19 @@ while true; do
     fi
 
     # Progressive diagnostics
-    if [[ $ELAPSED -ge 90 ]] && [[ "$DIAG_COLLECTED" == "false" ]]; then
-        log "Plugin not responding after 90s — collecting diagnostics + auto-remediation"
-        echo ""
-        collect_diagnostics
-        echo ""
-
+    if [[ $ELAPSED -ge 90 ]] && [[ "$LAUNCH_ATTEMPTED" == "false" ]]; then
+        if [[ "$DIAG_COLLECTED" == "false" ]]; then
+            log "Plugin not responding after 90s — collecting diagnostics + auto-remediation"
+            echo ""
+            collect_diagnostics
+            echo ""
+        fi
+        # Check for ToS dialog before attempting launch
+        dismiss_tos_dialog || true
+        TOS_CHECKED=true
         # Attempt to launch SketchUp
         attempt_launch_sketchup || true
+        LAUNCH_ATTEMPTED=true
         echo ""
         # Continue polling (don't reset timer)
     elif [[ $ELAPSED -ge 60 ]] && [[ "$DIAG_COLLECTED" == "false" ]]; then
@@ -256,7 +325,13 @@ while true; do
         echo ""
         "$WIN_CHECK" --sketchup-ready || true
         echo ""
-    elif [[ $ELAPSED -ge 30 ]] && [[ "$DIAG_COLLECTED" == "false" ]]; then
+    elif [[ $ELAPSED -ge 35 ]] && [[ "$TOS_CHECKED" == "false" ]]; then
+        log "Plugin not responding after 35s — checking for ToS dialog..."
+        echo ""
+        dismiss_tos_dialog || true
+        TOS_CHECKED=true
+        echo ""
+    elif [[ $ELAPSED -ge 30 ]] && [[ "$TOS_CHECKED" == "false" ]]; then
         log "Plugin not responding after 30s — taking diagnostic screenshot..."
         "$WIN_SCREENSHOT" --qemu "plugin_unresponsive_30s" 2>/dev/null || true
         echo ""

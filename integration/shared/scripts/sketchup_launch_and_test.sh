@@ -127,16 +127,55 @@ echo "=== Phase 3: Wait for SketchUp + plugin ==="
 
 if [[ -x "$SCRIPTS_DIR/wait-for-plugin.sh" ]]; then
     echo "  Using wait-for-plugin.sh (progressive diagnostics)..."
-    if "$SCRIPTS_DIR/wait-for-plugin.sh" --host "$HOST" --port "$PORT" --timeout "$MAX_WAIT"; then
-        echo "  Plugin ready"
-    else
-        echo "  Plugin not ready yet — attempting install..."
+    echo ""
 
-        # Try to install/reinstall the plugin
+    # Pre-flight: verify plugin is installed in the VM
+    echo "  Checking plugin installation..."
+    "$SCRIPTS_DIR/win-exec.sh" --no-connect --timeout 30 \
+        "cmd /c if exist \"C:\\Users\\Docker\\AppData\\Roaming\\SketchUp\\SketchUp 2025\\SketchUp\\Extensions\\sketchup_link.rb\" (echo FOUND) else (echo NOTFOUND)" \
+        ".plugin_check_$$.txt" 2>/dev/null || true
+    PLUGIN_RESULT=$(cat "$SHARED_DIR/.plugin_check_$$.txt" 2>/dev/null || echo "")
+    rm -f "$SHARED_DIR/.plugin_check_$$.txt" "$SHARED_DIR/.plugin_check_$$.txt.exitcode" 2>/dev/null || true
+    if echo "$PLUGIN_RESULT" | grep -q "NOTFOUND"; then
+        echo "  Plugin entry file not found — installing now..."
         if [[ -x "$SCRIPTS_DIR/sketchup-install.sh" ]]; then
             "$SCRIPTS_DIR/sketchup-install.sh" --plugin-only
         fi
-
+        echo ""
+    else
+        echo "  Plugin entry file found"
+    fi
+    echo ""
+    # Wait for plugin with progressive diagnostics
+    if "$SCRIPTS_DIR/wait-for-plugin.sh" --host "$HOST" --port "$PORT" --timeout "$MAX_WAIT"; then
+        echo "  Plugin ready"
+    else
+        echo "  Plugin not ready — checking for ToS dialog..."
+        echo ""
+        # Try to dismiss ToS dialog before install attempt
+        if command -v agent-rdp &>/dev/null; then
+            for search_term in "Agree" "Accept" "I Agree" "Terms" "License"; do
+                if agent-rdp --session sketchup-link locate "$search_term" &>/dev/null; then
+                    echo "  Found '$search_term' on screen — dismissing dialog..."
+                    agent-rdp --session sketchup-link keyboard press "tab" 2>/dev/null || true
+                    sleep 0.5
+                    agent-rdp --session sketchup-link keyboard press "tab" 2>/dev/null || true
+                    sleep 0.5
+                    agent-rdp --session sketchup-link keyboard press "tab" 2>/dev/null || true
+                    sleep 0.5
+                    agent-rdp --session sketchup-link keyboard press "enter" 2>/dev/null || true
+                    sleep 5
+                    echo "  ToS dialog dismissed, retrying wait..."
+                    break
+                fi
+            done
+        fi
+        # Try to install/reinstall the plugin
+        echo "  Attempting plugin install..."
+        if [[ -x "$SCRIPTS_DIR/sketchup-install.sh" ]]; then
+            "$SCRIPTS_DIR/sketchup-install.sh" --plugin-only
+        fi
+        echo ""
         # One more wait
         echo "  Waiting again after install attempt..."
         if "$SCRIPTS_DIR/wait-for-plugin.sh" --host "$HOST" --port "$PORT" --timeout 120; then
