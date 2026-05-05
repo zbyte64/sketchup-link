@@ -6,12 +6,12 @@
 #   wait-for-plugin.sh --host 127.0.0.1 --port 9876 --timeout 300
 #   wait-for-plugin.sh                          # Uses defaults
 #
-sl|# Progressive diagnostics:
-se|#   - Every poll: checks sentinel file (sketchup_status.json from launch_sketchup.ps1)
-hy|#   - After 30s: takes QEMU screenshot
-ll|#   - After 60s: checks SketchUp process, plugin file, and port
-ad|#   - After 90s: attempts auto-remediation (launch SketchUp, re-install plugin)
-ib|#   - On timeout: collects full diagnostic report
+# Progressive diagnostics:
+#   - Every poll: checks sentinel file (sketchup_status.json from launch_sketchup.ps1)
+#   - After 30s: takes QEMU screenshot
+#   - After 60s: checks SketchUp process, plugin file, and port
+#   - After 90s: attempts auto-remediation (launch SketchUp, re-install plugin)
+#   - On timeout: collects full diagnostic report
 
 set -euo pipefail
 
