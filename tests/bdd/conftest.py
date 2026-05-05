@@ -330,16 +330,18 @@ def sketchup_test_model():
         f"Model missing 'component_definitions' key. Keys: {list(data.keys())}"
     )
 
-    # Validate entity types
     entities = data.get('entities', [])
-    entity_types = [e.get('type') for e in entities]
-    expected_types = ['Face', 'Face', 'Edge', 'Group', 'ComponentInstance']
-    assert entity_types == expected_types, (
-        f"Entity types mismatch.\n"
-        f"  Expected: {expected_types}\n"
-        f"  Got:      {entity_types}\n\n"
-        f"The test model must match factories.rb. Open SketchUp in the VM,\n"
-        f"create the test geometry, save to C:\\shared\\test_model.skp."
+    # Validate entity types — superset check: the test model may have
+    # additional entities (e.g. a textured face), but must include all
+    # expected types from factories.rb.
+    expected_types = {'Face', 'Face', 'Edge', 'Group', 'ComponentInstance'}
+    actual_types = {e.get('type') for e in entities}
+    assert expected_types.issubset(actual_types), (
+        f"Entity types missing expected types.\n"
+        f"  Expected (superset): {expected_types}\n"
+        f"  Got:                {actual_types}\n\n"
+        f"The test model must include at least: Face, Edge, Group, ComponentInstance.\n"
+        f"Open SketchUp in the VM, create the test geometry, save to C:\\shared\\test_model.skp."
     )
 
     # Validate materials
@@ -566,6 +568,13 @@ def then_entity_count_matches(request):
         f"Entity count mismatch: {len(model_entities)} vs {len(src_entities)}"
     )
 
+
+@then('the Red material has texture data')
+def then_red_material_has_texture(request):
+    model = _get_json_model_adapter(request)
+    red_mat = next(m for m in model.materials if m.name == 'Red')
+    assert red_mat.texture is not None, "Red material should have texture data"
+    assert red_mat.texture.name == "test_texture.png"
 
 # =========================================================================
 # THEN steps — Material assignment

@@ -23,6 +23,7 @@ model JSON is fetched once, and JsonModel is constructed once.
 """
 
 import pytest
+import json
 import socket
 # TODO validate sync changes can be accepted by bpy
 
@@ -51,6 +52,25 @@ class TestTransport:
         with pytest.raises((OSError, ConnectionRefusedError, FileNotFoundError)):
             fetch_model_json('/tmp/sketchup-link-nonexistent.sock')
 
+
+    def test_no_textures_omits_texture_data(self, ruby_server):
+        """GET /model?no_textures=true should omit texture data."""
+        import http.client as hc
+        from blender_plugin.live_adapter import _UnixSocketHTTPConnection
+        conn = _UnixSocketHTTPConnection(ruby_server)
+        conn.request("GET", "/model?no_textures=true")
+        resp = conn.getresponse()
+        assert resp.status == 200
+        data = json.loads(resp.read())
+        conn.close()
+        # Red material should have texture metadata but no data
+        red_mat = next(m for m in data['materials'] if m['name'] == 'Red')
+        assert 'texture' in red_mat, "Red material should have texture key"
+        tex = red_mat['texture']
+        assert 'filename' in tex, "Texture should have filename"
+        assert 'data' not in tex, "no_textures=true should omit texture data"
+        assert 'image_width' not in tex, "no_textures=true should omit image_width"
+        assert 'image_height' not in tex, "no_textures=true should omit image_height"
 
 # ===========================================================================
 # JsonModel — top-level model properties
@@ -323,10 +343,44 @@ class TestJsonMaterial:
     def test_red_opacity(self, by_name):
         assert by_name['Red'].opacity == 1.0
 
-    def test_texture_is_none_for_live_import(self, by_name):
-        assert by_name['Red'].texture is None
+    def test_red_material_has_texture(self, by_name):
+        # Red has a texture (test_model has texture data for Red)
+        assert by_name['Red'].texture is not None
+        # Blue has no texture
         assert by_name['Blue'].texture is None
 
+    def test_texture_name(self, by_name):
+        tex = by_name['Red'].texture
+        assert tex is not None
+        assert tex.name == "test_texture.png"
+
+    def test_texture_dimensions(self, by_name):
+        tex = by_name['Red'].texture
+        assert tex is not None
+        w_px, h_px, w_m, h_m = tex.dimensions
+        assert w_px == 1, f"Expected image_width=1, got {w_px}"
+        assert h_px == 1, f"Expected image_height=1, got {h_px}"
+        assert w_m == 1.0, f"Expected width=1.0, got {w_m}"
+        assert h_m == 1.0, f"Expected height=1.0, got {h_m}"
+
+    def test_texture_write(self, by_name):
+        import tempfile
+        import os
+        tex = by_name['Red'].texture
+        assert tex is not None
+        tmpdir = tempfile.mkdtemp()
+        try:
+            out_path = os.path.join(tmpdir, "test_output.png")
+            tex.write(out_path)
+            assert os.path.exists(out_path), "Texture write did not create file"
+            assert os.path.getsize(out_path) > 0, "Texture write produced empty file"
+            # Verify it's a valid PNG
+            with open(out_path, "rb") as f:
+                header = f.read(8)
+            assert header == b'\x89PNG\r\n\x1a\n', "Written file is not a valid PNG"
+        finally:
+            import shutil
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
 # ===========================================================================
 # JsonLayer — name, visible, __eq__, __hash__

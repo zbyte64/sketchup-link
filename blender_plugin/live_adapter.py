@@ -103,6 +103,37 @@ class JsonLayer:
 # Material
 # ---------------------------------------------------------------------------
 
+class _JsonTexture:
+    """Wraps a texture dict with .name, .dimensions, and .write(path).
+
+    Matches the interface expected by SceneImporter.write_materials().
+    """
+
+    def __init__(self, d):
+        self._d = d
+
+    @property
+    def name(self):
+        return self._d.get("filename", "texture.png")
+
+    @property
+    def dimensions(self):
+        # (width_px, height_px, width_m, height_m) — matching Cython Texture.dimensions
+        return (
+            self._d.get("image_width", 0),
+            self._d.get("image_height", 0),
+            self._d.get("width", 1.0),
+            self._d.get("height", 1.0),
+        )
+
+    def write(self, path):
+        import base64
+        data = self._d.get("data", "")
+        if data:
+            with open(path, "wb") as f:
+                f.write(base64.b64decode(data))
+
+
 class _JsonColor:
     """Iterable (r, g, b, a) — supports `r, g, b, a = mat.color` unpacking."""
 
@@ -117,15 +148,7 @@ class _JsonColor:
 
 
 class JsonMaterial:
-    """
-    Wraps a material dict.
-
-    Note: texture binary data is not included in the JSON snapshot, so
-    .texture returns None and Blender will use flat colour only for live
-    imports.  The server-side entity_serializer embeds texture filename and
-    dimensions for reference, but writing pixel data over the socket is out
-    of scope for a live-link workflow.
-    """
+    """Wraps a material dict."""
 
     def __init__(self, d):
         self._d = d
@@ -144,8 +167,9 @@ class JsonMaterial:
 
     @property
     def texture(self):
-        # Return None — write_materials() skips the texture-embedding block
-        # when this is falsy, which is safe.
+        d = self._d.get("texture")
+        if d:
+            return _JsonTexture(d)
         return None
 
 

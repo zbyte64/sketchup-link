@@ -4,6 +4,8 @@ require 'socket'
 require 'json'
 
 require 'securerandom'
+require 'tempfile'
+require 'base64'
 module SketchupLink
   class Server
     def initialize(subscription_manager)
@@ -84,10 +86,12 @@ module SketchupLink
       request_line = header.lines.first.to_s.strip
 
       case request_line
-      when /\AGET \/model(\s|\z)/
+      when /\AGET \/model(\?|\s|\z)/
+        opts = parse_model_params(request_line)
         payload = Serializer::ModelSerializer.serialize(
           Sketchup.active_model,
-          Serializer::EntitySerializer
+          Serializer::EntitySerializer,
+          no_textures: opts[:no_textures]
         )
         respond(client, 200, JSON.generate(payload))
         remove_client(client)
@@ -213,6 +217,21 @@ module SketchupLink
       client.flush
     rescue Errno::EPIPE, IOError
       remove_client(client)
+  end
+
+    def parse_model_params(request_line)
+      opts = { no_textures: false }
+      query = request_line.split('?', 2).last.to_s.strip
+      return opts if query.empty? || query.include?('HTTP/')
+      query.split('&').each do |param|
+        key, value = param.split('=', 2)
+        next unless key
+        case key
+        when 'no_textures'
+          opts[:no_textures] = value == 'true'
+        end
+      end
+      opts
     end
 
     def make_chunk(data)
@@ -237,6 +256,20 @@ module SketchupLink
       red_mat.color = Sketchup::Color.new(220, 20, 20)
       blue_mat = model.materials.add('Blue')
       blue_mat.color = Sketchup::Color.new(20, 20, 200)
+      # Base64-encoded 4x4 red-white checkerboard PNG
+      checker_png_b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAF0lEQVR4nGP4z8DwHwjAJIIFJBlwygAARRkf4WJ1tmcAAAAASUVORK5CYII='
+      begin
+        tmp = Tempfile.new(['sketchup_texture', '.png'])
+        tmp_path = tmp.path
+        tmp.binmode
+        tmp.write(Base64.decode64(checker_png_b64))
+        tmp.close
+        red_mat.texture = tmp_path
+      rescue StandardError => e
+        SketchupLink.log("Failed to set test texture: #{e.message}")
+      ensure
+        File.delete(tmp_path) if tmp_path && File.exist?(tmp_path)
+      end
 
       size  = 2.0
       y_off = 0.0

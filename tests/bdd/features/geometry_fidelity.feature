@@ -34,3 +34,10 @@ Feature: Geometric Fidelity
     And a SketchUp screenshot is captured
     And a screenshot is captured
     And a wireframe screenshot is captured
+
+  Scenario: Textured materials are present in the model
+    When I import the model via live sync
+    Then the Red material has texture data
+    And a SketchUp screenshot is captured
+    And a screenshot is captured
+    And a wireframe screenshot is captured

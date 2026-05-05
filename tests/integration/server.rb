@@ -20,9 +20,9 @@ require_relative 'factories'
 
 SOCKET_PATH = ARGV[0] || '/tmp/sketchup-link-test.sock'
 
-# Build the model JSON once — same snapshot for every connection in the test run.
-MODEL_JSON = JSON.generate(Factories.test_model).freeze
-
+# Build model JSON twice: full and no-textures variant.
+MODEL_JSON         = JSON.generate(Factories.test_model).freeze
+MODEL_JSON_NO_TEX  = JSON.generate(Factories.test_model_no_textures).freeze
 # ---------------------------------------------------------------------------
 # HTTP helpers (defined before the accept loop)
 # ---------------------------------------------------------------------------
@@ -160,9 +160,15 @@ def handle_client(client)
   request_line = buf.lines.first.to_s.strip
   method = request_line.split(' ').first || 'GET'
   path = request_line.split(' ')[1] || '/'
+  path_no_query = path.split('?').first
 
-  if method == 'GET' && path == '/model'
-    respond(client, 200, MODEL_JSON)
+  if method == 'GET' && path_no_query == '/model'
+    # no_textures=true strips texture binary data
+    if path.include?('no_textures=true')
+      respond(client, 200, MODEL_JSON_NO_TEX)
+    else
+      respond(client, 200, MODEL_JSON)
+    end
   elsif method == 'POST' && path.start_with?('/control/')
     # Extract the body after headers
     body_start = buf.index("\r\n\r\n")

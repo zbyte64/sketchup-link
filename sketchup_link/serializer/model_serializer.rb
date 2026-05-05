@@ -3,21 +3,21 @@
 module SketchupLink
   module Serializer
     module ModelSerializer
-      def self.serialize(model, entity_serializer = EntitySerializer)
+      def self.serialize(model, entity_serializer = EntitySerializer, no_textures: false)
         {
           'model_guid'            => model.guid,
           'camera'                => serialize_camera(model.active_view.camera),
           'title'                 => model.title,
           'path'                  => model.path,
           'entities'              => entity_serializer.serialize_entities(model.entities),
-          'materials'             => serialize_materials(model.materials, entity_serializer),
+          'materials'             => serialize_materials(model.materials, entity_serializer, no_textures: no_textures),
           'layers'                => serialize_layers(model.layers, entity_serializer),
           'component_definitions' => serialize_definitions(model.definitions, entity_serializer)
         }
       end
 
-      def self.serialize_materials(materials, entity_serializer)
-        materials.map { |m| entity_serializer.serialize_material(m) }.compact
+      def self.serialize_materials(materials, entity_serializer, no_textures: false)
+        materials.map { |m| entity_serializer.serialize_material(m, no_textures: no_textures) }.compact
       end
 
       def self.serialize_layers(layers, entity_serializer)

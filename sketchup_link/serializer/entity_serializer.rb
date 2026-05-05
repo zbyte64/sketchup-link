@@ -1,4 +1,6 @@
 # frozen_string_literal: true
+require 'tempfile'
+require 'base64'
 
 module SketchupLink
   module Serializer
@@ -128,7 +130,7 @@ module SketchupLink
       # ------------------------------------------------------------------
       # Material
       # ------------------------------------------------------------------
-      def self.serialize_material(material)
+      def self.serialize_material(material, no_textures: false)
         return nil unless material
 
         h = {
@@ -138,11 +140,28 @@ module SketchupLink
         }
         if material.texture
           tex = material.texture
-          h['texture'] = {
+          tex_hash = {
             'filename' => tex.filename.to_s.gsub('\\', '/'),
             'width'    => tex.width  * INCHES_TO_METERS,
             'height'   => tex.height * INCHES_TO_METERS
           }
+          unless no_textures
+            begin
+              tmp = Tempfile.new(['sketchup_texture', '.png'])
+              tmp_path = tmp.path
+              tmp.close
+              tex.write(tmp_path)
+              png_data = File.binread(tmp_path)
+              tex_hash['data'] = Base64.strict_encode64(png_data)
+              tex_hash['image_width']  = tex.image_width
+              tex_hash['image_height'] = tex.image_height
+            rescue StandardError => e
+              SketchupLink.log("Failed to serialize texture data: #{e.message}")
+            ensure
+              File.delete(tmp_path) if tmp_path && File.exist?(tmp_path)
+            end
+          end
+          h['texture'] = tex_hash
         end
         h
       end

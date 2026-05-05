@@ -121,12 +121,16 @@ module Factories
   # ---------------------------------------------------------------------------
 
   # r/g/b are pinned so tests can assert exact channel values.
-  def self.material(name:, r:, g:, b:, opacity: 1.0)
-    {
+  # r/g/b are pinned so tests can assert exact channel values.
+  # Accepts an optional 'texture' hash for texture data.
+  def self.material(name:, r:, g:, b:, opacity: 1.0, texture: nil)
+    h = {
       'name'    => name,
       'color'   => { 'r' => r, 'g' => g, 'b' => b, 'a' => 255 },
       'opacity' => opacity
     }
+    h['texture'] = texture if texture
+    h
   end
 
   def self.layer(name:, visible:)
@@ -181,10 +185,17 @@ module Factories
   #   Materials (2): Red(220,20,20) and Blue(20,20,200)
   #   Layers (3): Layer0(visible), Furniture(visible), Hidden(invisible)
   #   component_definitions (1): 'Chair' with 2 faces, num_instances=1
-  # ---------------------------------------------------------------------------
-
   def self.test_model
-    red_mat  = material(name: 'Red',  r: 220, g: 20,  b: 20)
+    red_texture_data = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC'
+    red_texture = {
+      'filename'     => 'test_texture.png',
+      'width'        => 1.0,
+      'height'       => 1.0,
+      'image_width'  => 1,
+      'image_height' => 1,
+      'data'         => red_texture_data
+    }
+    red_mat  = material(name: 'Red',  r: 220, g: 20,  b: 20, texture: red_texture)
     blue_mat = material(name: 'Blue', r: 20,  g: 20,  b: 200)
 
     layer0        = layer(name: 'Layer0',    visible: true)
@@ -220,5 +231,15 @@ module Factories
       'component_definitions' => { 'Chair' => chair_def },
       'camera'                => camera_data,
     }
+  end
+
+  # Same structure as test_model but with no texture data on Red material.
+  def self.test_model_no_textures
+    m = test_model
+    red = m['materials'].find { |mat| mat['name'] == 'Red' }
+    if red && red['texture']
+      red['texture'].reject! { |k, _| %w[data image_width image_height].include?(k) }
+    end
+    m
   end
 end
