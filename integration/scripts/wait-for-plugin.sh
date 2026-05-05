@@ -228,7 +228,7 @@ while true; do
             "http://${HOST}:${PORT}/status" 2>/dev/null || echo "000")
         log "Plugin READY after ${ELAPSED}s (HTTP $status_code)"
         echo ""
-        return 0
+        exit 0
     fi
 
     # Also check for sentinel file in shared folder (written by launch_sketchup.ps1)
@@ -267,7 +267,7 @@ while true; do
         if [[ "$DIAG_COLLECTED" == "false" ]]; then
             collect_diagnostics
         fi
-        return 1
+        exit 1
     fi
 
     sleep "$POLL_INTERVAL"
