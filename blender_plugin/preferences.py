@@ -1,7 +1,7 @@
 """SketchUp Addon Preferences — extracted from the original scene_importer."""
 
 import bpy
-from bpy.props import FloatProperty, IntProperty
+from bpy.props import BoolProperty, FloatProperty, IntProperty
 from bpy.types import AddonPreferences
 
 
@@ -11,6 +11,11 @@ class SketchupAddonPreferences(AddonPreferences):
     camera_far_plane: FloatProperty(name="Camera Clip Ends At :", default=250, unit="LENGTH")
 
     draw_bounds: IntProperty(name="Draw Similar Objects As Bounds When It's Over :", default=1000)
+    follow_viewport: BoolProperty(
+        name="Follow SketchUp Viewport",
+        description="Continuously match the Blender 3D viewport to the SketchUp camera",
+        default=True,
+    )
 
     def draw(self, context):
         layout = self.layout

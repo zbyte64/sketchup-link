@@ -346,23 +346,38 @@ class JsonDefinitionRef:
 
 class JsonCamera:
     """
-    Safe-default camera stub. Live imports skip camera import by setting
-    scenes_as_camera=False and import_camera=False, but write_camera() is
-    still called for model.camera when import_camera=True.
+    Wraps a camera dict from the JSON model snapshot.
+
+    When no camera data is present (backward compat with old servers or
+    SketchUp without active model), safe defaults are returned.
     """
 
+    def __init__(self, d=None):
+        self._d = d or {}
+
+    @classmethod
+    def default(cls):
+        """Safe defaults when no camera data is available."""
+        return cls({})
+
     def GetOrientation(self):  # noqa: N802
-        return (0, 0, 0), (0, 1, 0), (0, 0, 1)
+        eye    = tuple(self._d.get("eye", (0, 0, 0)))
+        target = tuple(self._d.get("target", (0, 0, 1)))
+        up     = tuple(self._d.get("up", (0, 0, 1)))
+        return eye, target, up
 
     @property
     def aspect_ratio(self):
-        return False  # False = use Blender's render aspect ratio
+        val = self._d.get("aspect_ratio", False)
+        return val if val is not None else False
 
     @property
     def fov(self):
-        return 35.0
+        return self._d.get("fov", 35.0)
 
-
+    @property
+    def perspective(self):
+        return self._d.get("perspective", True)
 # ---------------------------------------------------------------------------
 # Model
 # ---------------------------------------------------------------------------
@@ -407,7 +422,7 @@ class JsonModel:
 
     @property
     def camera(self):
-        return JsonCamera()
+        return JsonCamera(self._d.get("camera"))
 
     @property
     def layers(self):

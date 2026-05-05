@@ -152,6 +152,21 @@ module Factories
     }
   end
 
+
+  # ---------------------------------------------------------------------------
+  # Camera factory
+  # ---------------------------------------------------------------------------
+
+  def self.camera_data
+    {
+      'eye'          => [0.0, 0.0, 0.0],
+      'target'       => [0.0, 0.0254, 0.0],
+      'up'           => [0.0, 0.0, 1.0],
+      'perspective'  => true,
+      'fov'          => 35.0,
+      'aspect_ratio' => false,
+    }
+  end
   # ---------------------------------------------------------------------------
   # Canonical test model
   #
@@ -202,7 +217,8 @@ module Factories
       ],
       'materials'             => [red_mat, blue_mat],
       'layers'                => [layer0, furniture_lay, hidden_lay],
-      'component_definitions' => { 'Chair' => chair_def }
+      'component_definitions' => { 'Chair' => chair_def },
+      'camera'                => camera_data,
     }
   end
 end

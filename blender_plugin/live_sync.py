@@ -12,7 +12,7 @@ import threading
 import bpy
 from bpy.props import FloatProperty, StringProperty
 from bpy.types import Operator, Panel
-from mathutils import Matrix
+from mathutils import Matrix, Vector
 
 from .live_adapter import DEFAULT_SOCKET_PATH, JsonModel, fetch_model_json
 from .scene_importer import SceneImporter
@@ -80,10 +80,50 @@ def _sync_timer() -> "float | None":
                 import_scene="",
             )
             importer.load(bpy.context, **options)
+
+            # Follow SketchUp viewport if enabled
+            try:
+                prefs = bpy.context.preferences.addons[__package__].preferences
+                if prefs.follow_viewport:
+                    _apply_viewport(importer.skp_model.camera)
+            except Exception:
+                pass
         except Exception as e:
             print(f"[sketchup-link] live sync import error: {e}")
 
     return state["interval"]
+
+
+def _apply_viewport(camera):
+    """Set the active 3D viewport to match the SketchUp camera."""
+    pos, target, up = camera.GetOrientation()
+    if pos == target:
+        return  # degenerate, skip
+
+    z = Vector(pos) - Vector(target)  # direction from target to camera
+    x = Vector(up).cross(z)
+    y = z.cross(x)
+    x.normalize()
+    y.normalize()
+    z.normalize()
+
+    # Build view matrix from axes
+    # region_3d.view_matrix is the inverse of the camera world matrix
+    m = Matrix((
+        (x.x, y.x, z.x, pos[0]),
+        (x.y, y.y, z.y, pos[1]),
+        (x.z, y.z, z.z, pos[2]),
+        (0,   0,   0,  1),
+    ))
+    view_matrix = m.inverted()
+
+    for area in bpy.context.screen.areas:
+        if area.type == "VIEW_3D":
+            r3d = area.spaces[0].region_3d
+            r3d.view_matrix = view_matrix
+            r3d.view_perspective = "PERSP" if camera.perspective else "ORTHO"
+            r3d.view_distance = (Vector(pos) - Vector(target)).length
+            break
 
 
 class SketchUpStartLiveSync(Operator):
@@ -159,6 +199,7 @@ class SKETCHUP_PT_LiveSync(Panel):
             layout.operator("import_scene.skp_stop_live_sync", icon="PAUSE")
             layout.label(text=f"Socket: {state['socket_path']}")
             layout.label(text=f"Polling every {state['interval']}s")
+            layout.prop(context.preferences.addons[__package__].preferences, "follow_viewport")
         else:
             op = layout.operator("import_scene.skp_start_live_sync", icon="PLAY")
             op.socket_path = DEFAULT_SOCKET_PATH
