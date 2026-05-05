@@ -13,6 +13,7 @@ services:
       - /dev/net/tun
     cap_add:
       - NET_ADMIN
+      - SYS_ADMIN
     ports:
       - 8006:8006
       - 3389:3389/tcp
@@ -31,7 +32,9 @@ services:
       dockerfile: integration/Dockerfile.blender
     container_name: blender
     volumes:
-      - ./screenshots:/screenshots
+      - ../tests/bdd/screenshots:/screenshots
     depends_on:
       - windows
     restart: "no"
+    cap_add:
+      - SYS_ADMIN

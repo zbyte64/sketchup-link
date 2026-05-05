@@ -9,10 +9,7 @@ module SketchupLink
     def initialize(subscription_manager)
       @subscription_manager = subscription_manager
       @server  = nil
-      @clients = []
-      @buffers = {}
       @socket_path = nil
-      @timer_id    = nil
     end
 
     def start(socket_path)
@@ -25,19 +22,19 @@ module SketchupLink
         port = (ENV['TCP_PORT'] || DEFAULT_TCP_PORT).to_i
         @server = TCPServer.new('0.0.0.0', port)
       end
-      @timer_id = UI.start_timer(TIMER_INTERVAL, true) do
-        tick
-      rescue IOError, Errno::EBADF
-        # socket already closed — will be cleaned up next tick
-      end
+
+      # On Windows, IO.select does not support TCP sockets (it only works with
+      # pipes).  We must use a background thread with blocking I/O instead of
+      # a UI.start_timer-based poll loop.
+      @server_thread = Thread.new { server_loop }
     end
 
     def stop
-      UI.stop_timer(@timer_id) if @timer_id
+      @server&.close rescue nil
+      @server_thread&.kill if @server_thread&.alive?
       @clients.each { |c| c.close rescue nil }
       @clients.clear
       @buffers.clear
-      @server&.close rescue nil
       if ENV['SERVER_MODE'] == 'unix' && @socket_path && File.exist?(@socket_path)
         File.delete(@socket_path)
       end
@@ -45,48 +42,40 @@ module SketchupLink
       # best-effort cleanup
     end
 
-    private
-
-    def tick
-      all = [@server] + @clients
-      readable, = IO.select(all, nil, nil, 0)
-      return unless readable
-
-      readable.each do |s|
-        if s == @server
-          accept_client
-        else
-          read_client(s)
+    def server_loop
+      loop do
+        begin
+          client = @server.accept
+          Thread.new(client) { |c| handle_client(c) }
+        rescue IOError
+          break  # server socket closed
         end
       end
     end
 
-    def accept_client
-      client = @server.accept_nonblock
-      @clients << client
-      @buffers[client] = +''
-    rescue IO::WaitReadable
-      # no connection ready yet
-    end
-
-    def read_client(client)
-      data = client.read_nonblock(4096)
-      @buffers[client] << data
-      if (idx = @buffers[client].index("\r\n\r\n"))
-        header   = @buffers[client][0, idx]
-        body     = @buffers[client][(idx + 4)..]
-        @buffers.delete(client)
-        route(client, header, body)
+    def handle_client(client)
+      buffer = +''
+      loop do
+        begin
+          data = client.readpartial(4096)
+          buffer << data
+          if (idx = buffer.index("\r\n\r\n"))
+            header = buffer[0, idx]
+            body   = buffer[(idx + 4)..]
+            route(client, header, body)
+            break
+          end
+        rescue EOFError, Errno::ECONNRESET, Errno::EPIPE
+          break
+        end
       end
-    rescue IO::WaitReadable
-      # nothing to read right now
-    rescue EOFError, Errno::ECONNRESET, Errno::EPIPE
-      remove_client(client)
+    rescue => e
+      # connection error — client will hang up
+    ensure
+      client.close rescue nil
     end
 
     def remove_client(client)
-      @clients.delete(client)
-      @buffers.delete(client)
       @subscription_manager.remove_by_socket(client)
       client.close rescue nil
     end
