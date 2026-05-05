@@ -103,9 +103,40 @@ else
     echo "  Container '$CONTAINER' is already running"
 fi
 
-# TODO display logs from @integration/oem/install_sketchup.ps1
-# warn if log does not indicate installation success
+LOG_FILE="$SHARED_DIR/install_sketchup.log"
+echo "  Checking SketchUp installation log..."
+if [ -f "$LOG_FILE" ]; then
+    echo ""
+    echo "  === Installation log ($LOG_FILE) ==="
+    cat "$LOG_FILE"
+    echo "  === End of log ==="
+    echo ""
 
+    SUCCESS=false
+    HAS_ERROR=false
+
+    if grep -q "SketchUp installation complete" "$LOG_FILE"; then
+        SUCCESS=true
+    fi
+
+    if grep -q "ERROR" "$LOG_FILE"; then
+        HAS_ERROR=true
+    fi
+
+    if [ "$SUCCESS" = true ] && [ "$HAS_ERROR" = false ]; then
+        echo "  Installation result: SUCCESS"
+    elif [ "$SUCCESS" = true ] && [ "$HAS_ERROR" = true ]; then
+        echo "  WARNING: Installation completed BUT errors were logged — review above"
+    elif [ "$SUCCESS" = false ] && [ "$HAS_ERROR" = true ]; then
+        echo "  WARNING: Installation FAILED with errors — review above"
+    else
+        echo "  WARNING: Installation did not reach completion — review above"
+    fi
+else
+    echo "  WARNING: Installation log not found at $LOG_FILE"
+    echo "           (install_sketchup.ps1 may not have completed yet,"
+    echo "            or the shared volume mount may not be accessible)"
+fi
 
 # ---------------------------------------------------------------------------
 # Phase 3: Wait for SketchUp + plugin server
