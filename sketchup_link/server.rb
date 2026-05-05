@@ -12,22 +12,20 @@ module SketchupLink
       @subscription_manager = subscription_manager
       @server  = nil
       @socket_path = nil
+      @mode    = nil
+      @tcp_port = nil
     end
 
-    def start(socket_path)
-      @socket_path = socket_path
-      if ENV['SERVER_MODE'] == 'unix'
-        File.delete(socket_path) if File.exist?(socket_path)
-        @server = UNIXServer.new(socket_path)
+    def start(config = {})
+      @mode = config[:mode] || (ENV['SERVER_MODE'] == 'unix' ? :unix : :tcp)
+      @socket_path = config[:socket_path] || DEFAULT_SOCKET_PATH
+      @tcp_port = (config[:tcp_port] || ENV['TCP_PORT'] || DEFAULT_TCP_PORT).to_i
+      if @mode == :unix
+        File.delete(@socket_path) if File.exist?(@socket_path)
+        @server = UNIXServer.new(@socket_path)
       else
-        # Default to TCP mode — no env var needed when running in the VM
-        port = (ENV['TCP_PORT'] || DEFAULT_TCP_PORT).to_i
-        @server = TCPServer.new('0.0.0.0', port)
+        @server = TCPServer.new('0.0.0.0', @tcp_port)
       end
-
-      # On Windows, IO.select does not support TCP sockets (it only works with
-      # pipes).  We must use a background thread with blocking I/O instead of
-      # a UI.start_timer-based poll loop.
       @server_thread = Thread.new { server_loop }
     end
 
@@ -37,7 +35,7 @@ module SketchupLink
       @clients.each { |c| c.close rescue nil }
       @clients.clear
       @buffers.clear
-      if ENV['SERVER_MODE'] == 'unix' && @socket_path && File.exist?(@socket_path)
+      if @mode == :unix && @socket_path && File.exist?(@socket_path)
         File.delete(@socket_path)
       end
     rescue StandardError

@@ -14,8 +14,7 @@ from bpy.props import FloatProperty, StringProperty
 from bpy.types import Operator, Panel
 from mathutils import Matrix, Vector
 
-from .live_adapter import DEFAULT_SOCKET_PATH, JsonModel, fetch_model_json
-from .scene_importer import SceneImporter
+from .live_adapter import DEFAULT_SOCKET_PATH, JsonModel, fetch_model_json, fetch_model_json_tcp
 
 
 _sync_state: dict = {
@@ -24,6 +23,8 @@ _sync_state: dict = {
     "stop_event": None,
     "queue": None,
     "socket_path": DEFAULT_SOCKET_PATH,
+    "tcp_port": 9876,
+    "use_tcp": True,
     "interval": 2.0,
 }
 
@@ -32,15 +33,19 @@ def _poll_loop(
     stop_event: threading.Event,
     q: queue.SimpleQueue,
     socket_path: str,
+    tcp_port: int,
+    use_tcp: bool,
     interval: float,
 ) -> None:
     """Background daemon thread: polls SketchUp and queues model snapshots."""
     while not stop_event.wait(timeout=interval):
         try:
-            q.put(fetch_model_json(socket_path))
+            if use_tcp:
+                q.put(fetch_model_json_tcp(port=tcp_port))
+            else:
+                q.put(fetch_model_json(socket_path))
         except Exception:
             pass  # SketchUp not running — skip silently
-
 
 def _sync_timer() -> "float | None":
     """
@@ -148,18 +153,26 @@ class SketchUpStartLiveSync(Operator):
             self.report({"INFO"}, "Already running")
             return {"CANCELLED"}
 
+        # Read transport config from addon preferences
+        prefs = context.preferences.addons[__package__].preferences
+        use_tcp = prefs.use_tcp
+        socket_path = prefs.socket_path
+        tcp_port = prefs.tcp_port
+
         stop_event = threading.Event()
         q: queue.SimpleQueue = queue.SimpleQueue()
         state.update(
             running=True,
-            socket_path=self.socket_path,
+            socket_path=socket_path,
+            tcp_port=tcp_port,
+            use_tcp=use_tcp,
             interval=self.interval,
             stop_event=stop_event,
             queue=q,
         )
         state["thread"] = threading.Thread(
             target=_poll_loop,
-            args=(stop_event, q, self.socket_path, self.interval),
+            args=(stop_event, q, socket_path, tcp_port, use_tcp, self.interval),
             daemon=True,
         )
         state["thread"].start()
@@ -195,11 +208,15 @@ class SKETCHUP_PT_LiveSync(Panel):
     def draw(self, context):
         layout = self.layout
         state = _sync_state
+        prefs = context.preferences.addons[__package__].preferences
         if state["running"]:
             layout.operator("import_scene.skp_stop_live_sync", icon="PAUSE")
-            layout.label(text=f"Socket: {state['socket_path']}")
+            if state["use_tcp"]:
+                layout.label(text=f"TCP: localhost:{state['tcp_port']}")
+            else:
+                layout.label(text=f"Socket: {state['socket_path']}")
             layout.label(text=f"Polling every {state['interval']}s")
-            layout.prop(context.preferences.addons[__package__].preferences, "follow_viewport")
+            layout.prop(prefs, "follow_viewport")
         else:
             op = layout.operator("import_scene.skp_start_live_sync", icon="PLAY")
             op.socket_path = DEFAULT_SOCKET_PATH
