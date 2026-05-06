@@ -223,6 +223,17 @@ class SceneImporter:
         if not MIN_LOGS:
             skp_log(f"Materials imported in {(time.time() - _time_material):.4f} sec.")
 
+        # Set up environment: sun light and world (Feature 1 & 4)
+        try:
+            shadow_info = getattr(self.skp_model, "shadow_info", None)
+            if shadow_info is not None:
+                self.write_sun_light(shadow_info)
+                self.write_world(shadow_info)
+        except Exception as e:
+            if not MIN_LOGS:
+                skp_log(f"Environment setup error: {e}")
+                pass
+
         # Start stopwatch for component import
         if not MIN_LOGS:
             skp_log("")
@@ -482,7 +493,91 @@ class SceneImporter:
             if not MIN_LOGS:
                 print(f"     {name}")
 
+        # Companion texture detection (Feature 5)
+        if hasattr(self, 'prefs') and self.prefs.enhance_materials:
+            self._apply_companion_textures(materials)
+
+    def _apply_companion_textures(self, materials):
+        """Apply companion textures (roughness, normal, metallic, bump) from
+        materials whose name matches {base}_{suffix} convention."""
+        # Build lookup: base_name -> {suffix -> texture_path}
+        companion_map = {}  # base_name -> [(suffix, texture_source)]
+        for m in materials:
+            fn = m.name
+            # Check for known companion suffixes
+            suffix = None
+            for sfx in ("_roughness", "_rough", "_normal", "_metallic", "_disp", "_bump"):
+                if fn.endswith(sfx):
+                    base = fn[: -len(sfx)]
+                    remainder = base
+                    # Account for double suffix like Wood_normal vs Wood_normal_rough
+                    # Only match if the remaining part is a valid base name
+                    if base in self.materials:
+                        suffix = sfx
+                    break
+            if suffix is None:
+                continue
+            base = fn[: -len(suffix)]
+            # Map suffix to shader input
+            input_map = {
+                "_rough": "Roughness",
+                "_roughness": "Roughness",
+                "_normal": "Normal",
+                "_metallic": "Metallic",
+                "_disp": "Normal",  # wired through Bump node into Normal
+                "_bump": "Normal",  # wired through Bump node into Normal
+            }
+            target_input = input_map[suffix]
+            tex = m.texture
+            if tex is None:
+                # Try to find a texture in the model's materials
+                continue
+            bmat = self.materials.get(base)
+            if bmat is None:
+                continue
+            # Load the companion texture image
+            tex_name = tex.name.split(os.path.sep)[-1]
+            temp_dir = tempfile.gettempdir()
+            skp_fname = self.filepath.split(os.path.sep)[-1].split(".")[0]
+            temp_dir += os.path.sep + skp_fname
+            if not os.path.isdir(temp_dir):
+                os.mkdir(temp_dir)
+            temp_file_path = os.path.join(temp_dir, tex_name)
+            tex.write(temp_file_path)
+            img = bpy.data.images.load(temp_file_path)
+            img.pack()
+            shutil.rmtree(temp_dir)
+            nodes = bmat.node_tree.nodes
+            links = bmat.node_tree.links
+            if target_input == "Normal":
+                if suffix in ("_bump", "_disp"):
+                    # Create Bump node
+                    bump_node = nodes.new("ShaderNodeBump")
+                    bump_node.location = Vector((-600, -300))
+                    tex_node = nodes.new("ShaderNodeTexImage")
+                    tex_node.image = img
+                    tex_node.location = Vector((-900, -300))
+                    links.new(tex_node.outputs["Color"], bump_node.inputs["Height"])
+                    links.new(bump_node.outputs["Normal"], nodes["Principled BSDF"].inputs["Normal"])
+                else:
+                    # Normal map: wire through Normal Map node
+                    normal_map_node = nodes.new("ShaderNodeNormalMap")
+                    normal_map_node.location = Vector((-600, -300))
+                    tex_node = nodes.new("ShaderNodeTexImage")
+                    tex_node.image = img
+                    tex_node.location = Vector((-900, -300))
+                    links.new(tex_node.outputs["Color"], normal_map_node.inputs["Color"])
+                    links.new(normal_map_node.outputs["Normal"], nodes["Principled BSDF"].inputs["Normal"])
+            else:
+                tex_node = nodes.new("ShaderNodeTexImage")
+                tex_node.image = img
+                tex_node.location = Vector((-600, -300))
+                links.new(tex_node.outputs["Color"], nodes["Principled BSDF"].inputs[target_input])
+            if not MIN_LOGS:
+                print(f"     |_companion: {fn} -> {base}.{target_input}")
+
     def write_mesh_data(self, entities=None, name="", default_material="DefaultMaterial"):
+
         mesh_key = (name, default_material)
         if mesh_key in self.component_meshes:
             return self.component_meshes[mesh_key]
@@ -945,6 +1040,96 @@ class SceneImporter:
         cam.clip_end = self.prefs.camera_far_plane
         cam.name = "Cam: " + name
         return cam.name
+    def write_sun_light(self, shadow_info):
+        """Create a Blender Sun light from SketchUp shadow info."""
+        if not shadow_info or not self.prefs.import_sun_light:
+            return
+
+        sun_dir = shadow_info.sun_direction
+        if not sun_dir or all(abs(v) < 1e-8 for v in sun_dir):
+            return
+
+        # Check if sun light already exists
+        sun_obj = bpy.data.objects.get("SKP Sun")
+        if sun_obj is None:
+            bpy.ops.object.light_add(type="SUN", location=(0, 0, 0))
+            sun_obj = bpy.context.object
+            sun_obj.name = "SKP Sun"
+        else:
+            sun_obj.select_set(True)
+            bpy.context.view_layer.objects.active = sun_obj
+
+        # Convert sun_direction to rotation: align light's local -Z to sun_direction
+        sun_vec = Vector(sun_dir).normalized()
+        quat = Vector((0, 0, -1)).rotation_difference(sun_vec)
+        sun_obj.rotation_mode = "QUATERNION"
+        sun_obj.rotation_quaternion = quat
+
+        # Set strength from light value (0-100 mapped to 1-10)
+        light = shadow_info.light
+        sun_data = sun_obj.data
+        sun_data.energy = 1.0 + (light / 100.0) * 9.0
+
+        # Set angle proportional to shadow softness (inverse of dark value)
+        dark = shadow_info.dark
+        sun_data.angle = 0.01 + (1.0 - dark / 100.0) * 0.05
+
+        if not MIN_LOGS:
+            skp_log(f"Sun light created: direction={sun_dir}, energy={sun_data.energy:.2f}")
+
+    def write_world(self, shadow_info):
+        """Set up Blender world environment."""
+        if not self.prefs.setup_world_sky:
+            return
+
+        world = bpy.data.worlds.get("SKP World")
+        if world is None:
+            world = bpy.data.worlds.new("SKP World")
+        bpy.context.scene.world = world
+
+        if not world.use_nodes:
+            world.use_nodes = True
+
+        nodes = world.node_tree.nodes
+        links = world.node_tree.links
+        nodes.clear()
+
+        output_shader = nodes.new("ShaderNodeOutputWorld")
+        output_shader.location = (0, 0)
+
+        if shadow_info and self.prefs.world_sky_model == "NISHITA":
+            # Create Nishita sky texture
+            sky_node = nodes.new("ShaderNodeTexSky")
+            sky_node.location = (-600, 0)
+            sky_node.sky_type = "NISHITA"
+
+            # Set sun direction from shadow_info
+            sun_dir = shadow_info.sun_direction
+            if sun_dir and any(abs(v) > 1e-8 for v in sun_dir):
+                sky_node.sun_direction = Vector(sun_dir).normalized()
+
+            # Set sun elevation/rotation from time/location if available
+            if shadow_info.latitude != 0.0:
+                sky_node.sun_elevation = shadow_info.latitude * math.pi / 180.0
+            if shadow_info.longitude != 0.0:
+                sky_node.sun_rotation = -shadow_info.longitude * math.pi / 180.0
+
+            # Connect sky texture to background
+            bg_node = nodes.new("ShaderNodeBackground")
+            bg_node.location = (-300, 0)
+            bg_node.inputs["Strength"].default_value = self.prefs.world_strength
+            links.new(sky_node.outputs["Color"], bg_node.inputs["Color"])
+        else:
+            # Use flat color background
+            bg_node = nodes.new("ShaderNodeBackground")
+            bg_node.location = (-300, 0)
+            bg_node.inputs["Strength"].default_value = self.prefs.world_strength
+            bg_node.inputs["Color"].default_value = (0.5, 0.5, 0.5, 1.0)
+
+        links.new(bg_node.outputs["Background"], output_shader.inputs["Surface"])
+
+        if not MIN_LOGS:
+            skp_log("World environment set up")
 
 
 class SceneExporter:

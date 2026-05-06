@@ -12,6 +12,7 @@ module SketchupLink
           'entities'              => entity_serializer.serialize_entities(model.entities),
           'materials'             => serialize_materials(model.materials, entity_serializer, no_textures: no_textures, binary_textures: binary_textures),
           'layers'                => serialize_layers(model.layers, entity_serializer),
+          'shadow_info'           => serialize_shadow_info(model),
           'component_definitions' => serialize_definitions(model.definitions, entity_serializer)
         }
       end
@@ -50,6 +51,26 @@ module SketchupLink
           'perspective'  => perspective,
           'fov'          => perspective ? fov.to_f : 0.0,
           'aspect_ratio' => aspect_ratio.is_a?(Numeric) ? aspect_ratio.to_f : false
+        }
+      rescue StandardError
+        nil
+      end
+
+      def self.serialize_shadow_info(model)
+        si = model.shadow_info
+        return nil unless si
+
+        sun_dir = si['SunDirection']
+        {
+          'north_angle'       => si['NorthAngle'].to_f,
+          'latitude'          => si['Latitude'].to_f,
+          'longitude'         => si['Longitude'].to_f,
+          'sun_direction'     => sun_dir ? [sun_dir.x.to_f, sun_dir.y.to_f, sun_dir.z.to_f] : nil,
+          'dark'              => si['Dark'].to_f,
+          'light'             => si['Light'].to_f,
+          'display_shadows'   => si['DisplayShadows'] == true,
+          'use_sun_for_shading' => si['UseSunForShading'] == true,
+          'shadow_time'       => si['ShadowTime'].to_i,
         }
       rescue StandardError
         nil

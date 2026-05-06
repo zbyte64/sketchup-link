@@ -7,7 +7,14 @@ calls when the addon is enabled/disabled.
 
 import bpy
 
-from .live_sync import SKETCHUP_PT_LiveSync, SketchUpStartLiveSync, SketchUpStopLiveSync
+from .live_sync import (
+    SKETCHUP_PT_LiveSync,
+    SKETCHUP_PT_RenderSettings,
+    SketchUpStartLiveSync,
+    SketchUpStopLiveSync,
+    SketchUpQuickRender,
+    SketchUpQuickRenderViewport,
+)
 from .preferences import SketchupAddonPreferences
 from .scene_importer import ExportSKP, ImportSKP, LiveImportSKP, menu_func_export, menu_func_import, menu_func_live_import
 
@@ -24,6 +31,9 @@ def register():
     bpy.utils.register_class(SketchUpStartLiveSync)
     bpy.utils.register_class(SketchUpStopLiveSync)
     bpy.utils.register_class(SKETCHUP_PT_LiveSync)
+    bpy.utils.register_class(SketchUpQuickRender)
+    bpy.utils.register_class(SketchUpQuickRenderViewport)
+    bpy.utils.register_class(SKETCHUP_PT_RenderSettings)
 
 
 def unregister():
@@ -36,6 +46,9 @@ def unregister():
         if _sync_state["stop_event"]:
             _sync_state["stop_event"].set()
 
+    bpy.utils.unregister_class(SketchUpQuickRender)
+    bpy.utils.unregister_class(SketchUpQuickRenderViewport)
+    bpy.utils.unregister_class(SKETCHUP_PT_RenderSettings)
     bpy.utils.unregister_class(ImportSKP)
     bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
     bpy.utils.unregister_class(LiveImportSKP)

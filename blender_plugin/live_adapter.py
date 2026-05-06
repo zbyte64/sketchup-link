@@ -492,9 +492,56 @@ class JsonCamera:
     @property
     def perspective(self):
         return self._d.get("perspective", True)
+class JsonShadowInfo:
+    """Wraps a shadow_info dict from the JSON model snapshot."""
+
+    def __init__(self, d=None):
+        self._d = d or {}
+
+    @property
+    def north_angle(self):
+        return self._d.get("north_angle", 0.0)
+
+    @property
+    def latitude(self):
+        return self._d.get("latitude", 0.0)
+
+    @property
+    def longitude(self):
+        return self._d.get("longitude", 0.0)
+
+    @property
+    def sun_direction(self):
+        val = self._d.get("sun_direction")
+        if val and len(val) == 3:
+            return tuple(val)
+        return (0.0, 0.0, 1.0)
+
+    @property
+    def dark(self):
+        return self._d.get("dark", 50.0)
+
+    @property
+    def light(self):
+        return self._d.get("light", 70.0)
+
+    @property
+    def display_shadows(self):
+        return self._d.get("display_shadows", False)
+
+    @property
+    def use_sun_for_shading(self):
+        return self._d.get("use_sun_for_shading", False)
+
+    @property
+    def shadow_time(self):
+        return self._d.get("shadow_time", 0)
+
+
 # ---------------------------------------------------------------------------
 # Model
 # ---------------------------------------------------------------------------
+
 
 class JsonModel:
     """
@@ -542,3 +589,6 @@ class JsonModel:
     @property
     def layers(self):
         return [JsonLayer(l) for l in self._d.get("layers", [])]
+    @property
+    def shadow_info(self):
+        return JsonShadowInfo(self._d.get("shadow_info"))

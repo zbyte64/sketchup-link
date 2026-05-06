@@ -121,7 +121,6 @@ module Factories
   # ---------------------------------------------------------------------------
 
   # r/g/b are pinned so tests can assert exact channel values.
-  # r/g/b are pinned so tests can assert exact channel values.
   # Accepts an optional 'texture' hash for texture data.
   def self.material(name:, r:, g:, b:, opacity: 1.0, texture: nil)
     h = {
@@ -156,7 +155,6 @@ module Factories
     }
   end
 
-
   # ---------------------------------------------------------------------------
   # Camera factory
   # ---------------------------------------------------------------------------
@@ -171,6 +169,25 @@ module Factories
       'aspect_ratio' => false,
     }
   end
+
+  # ---------------------------------------------------------------------------
+  # Shadow info factory
+  # ---------------------------------------------------------------------------
+
+  def self.shadow_info_data
+    {
+      'north_angle'        => 0.0,
+      'latitude'           => 37.7749,
+      'longitude'          => -122.4194,
+      'sun_direction'      => [-0.5, 0.3, 0.8],
+      'dark'               => 50.0,
+      'light'              => 80.0,
+      'display_shadows'    => true,
+      'use_sun_for_shading' => false,
+      'shadow_time'        => 1650000000,
+    }
+  end
+
   # ---------------------------------------------------------------------------
   # Canonical test model
   #
@@ -230,6 +247,7 @@ module Factories
       'layers'                => [layer0, furniture_lay, hidden_lay],
       'component_definitions' => { 'Chair' => chair_def },
       'camera'                => camera_data,
+      'shadow_info'           => shadow_info_data,
     }
   end
 

@@ -95,6 +95,7 @@ def test_model_keys():
         "entities",
         "materials",
         "layers",
+        "shadow_info",
         "component_definitions",
     }
 

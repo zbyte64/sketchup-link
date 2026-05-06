@@ -26,9 +26,12 @@ import pytest
 import json
 import socket
 # TODO validate sync changes can be accepted by bpy
-
-from blender_plugin.live_adapter import fetch_model_json, JsonLayer, JsonDefinitionRef
-
+from blender_plugin.live_adapter import (
+    fetch_model_json,
+    JsonLayer,
+    JsonDefinitionRef,
+    JsonShadowInfo,
+)
 
 # ===========================================================================
 # Transport — fetch_model_json
@@ -477,3 +480,59 @@ class TestComponentDefinitions:
     def test_component_definitions_iterable_name(self, json_model):
         defs = list(json_model.component_definitions)
         assert defs[0].name == 'Chair'
+ 
+ 
+# ===========================================================================
+# JsonShadowInfo — shadow_info adapter
+# ===========================================================================
+ 
+class TestJsonShadowInfo:
+    def test_shadow_info_present(self, json_model):
+        si = json_model.shadow_info
+        assert si is not None
+ 
+    def test_north_angle_default(self, json_model):
+        assert json_model.shadow_info.north_angle == 0.0
+ 
+    def test_latitude(self, json_model):
+        assert json_model.shadow_info.latitude == 37.7749
+ 
+    def test_longitude(self, json_model):
+        assert json_model.shadow_info.longitude == -122.4194
+ 
+    def test_sun_direction_returns_tuple(self, json_model):
+        sd = json_model.shadow_info.sun_direction
+        assert isinstance(sd, tuple)
+        assert len(sd) == 3
+ 
+    def test_sun_direction_values(self, json_model):
+        sd = json_model.shadow_info.sun_direction
+        assert sd == (-0.5, 0.3, 0.8)
+ 
+    def test_dark_value(self, json_model):
+        assert json_model.shadow_info.dark == 50.0
+ 
+    def test_light_value(self, json_model):
+        assert json_model.shadow_info.light == 80.0
+ 
+    def test_display_shadows(self, json_model):
+        assert json_model.shadow_info.display_shadows is True
+ 
+    def test_use_sun_for_shading(self, json_model):
+        assert json_model.shadow_info.use_sun_for_shading is False
+ 
+    def test_shadow_time(self, json_model):
+        assert json_model.shadow_info.shadow_time == 1650000000
+ 
+    def test_shadow_info_safe_defaults(self):
+        """Empty dict should return safe defaults."""
+        si = JsonShadowInfo({})
+        assert si.north_angle == 0.0
+        assert si.latitude == 0.0
+        assert si.longitude == 0.0
+        assert si.sun_direction == (0.0, 0.0, 1.0)
+        assert si.dark == 50.0
+        assert si.light == 70.0
+        assert si.display_shadows is False
+        assert si.use_sun_for_shading is False
+        assert si.shadow_time == 0

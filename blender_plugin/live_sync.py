@@ -207,3 +207,142 @@ class SKETCHUP_PT_LiveSync(Panel):
         else:
             op = layout.operator("import_scene.skp_start_live_sync", icon="PLAY")
             op.interval = 2.0
+ 
+        layout.separator()
+        layout.label(text="- Quick Render -")
+        row = layout.row(align=True)
+        row.scale_y = 1.5
+        row.operator("sketchup.quick_render", icon="RENDER_STILL", text="Quick Render")
+        row = layout.row(align=True)
+        row.scale_y = 1.0
+        row.operator("sketchup.quick_render_viewport", icon="RENDER_WINDOW", text="Viewport Render")
+        if state["running"] and prefs:
+            row = layout.row()
+            row.prop(prefs, "render_samples", text="Samples")
+ 
+class SketchUpQuickRender(Operator):
+    """Render the current scene using the SketchUp camera and addon preferences"""
+ 
+    bl_idname = "sketchup.quick_render"
+    bl_label = "Quick Render (SketchUp)"
+    bl_options = {"REGISTER"}
+ 
+    @classmethod
+    def poll(cls, context):
+        return _sync_state["running"]
+ 
+    def execute(self, context):
+        prefs = context.preferences.addons[__package__].preferences
+        scene = context.scene
+ 
+        # Apply render settings from preferences
+        scene.render.engine = prefs.render_engine
+        scene.render.resolution_x = prefs.render_resolution_x
+        scene.render.resolution_y = prefs.render_resolution_y
+        scene.render.file_format = prefs.render_file_format
+        scene.render.filepath = prefs.render_output_dir
+ 
+        # Set render samples for Cycles/Eevee
+        if prefs.render_engine == "CYCLES":
+            scene.cycles.samples = prefs.render_samples
+            if hasattr(scene.cycles, "use_denoising"):
+                scene.cycles.use_denoising = prefs.render_denoise
+        elif prefs.render_engine == "BLENDER_EEVEE_NEXT":
+            scene.eevee.taa_render_samples = prefs.render_samples
+ 
+        # Switch to camera view
+        for area in context.screen.areas:
+            if area.type == "VIEW_3D":
+                area.spaces[0].region_3d.view_perspective = "CAMERA"
+                break
+ 
+        # Trigger render
+        bpy.ops.render.render("INVOKE_DEFAULT", write_still=True)
+ 
+        self.report({"INFO"}, "Quick render started")
+        return {"FINISHED"}
+ 
+ 
+class SketchUpQuickRenderViewport(Operator):
+    """Render the current viewport (no file saved)"""
+ 
+    bl_idname = "sketchup.quick_render_viewport"
+    bl_label = "Quick Viewport Render"
+    bl_options = {"REGISTER"}
+ 
+    @classmethod
+    def poll(cls, context):
+        return _sync_state["running"]
+ 
+    def execute(self, context):
+        prefs = context.preferences.addons[__package__].preferences
+        scene = context.scene
+ 
+        # Apply render settings from preferences
+        scene.render.engine = prefs.render_engine
+        scene.render.resolution_x = prefs.render_resolution_x
+        scene.render.resolution_y = prefs.render_resolution_y
+ 
+        # Set render samples
+        if prefs.render_engine == "CYCLES":
+            scene.cycles.samples = prefs.render_samples
+            if hasattr(scene.cycles, "use_denoising"):
+                scene.cycles.use_denoising = prefs.render_denoise
+        elif prefs.render_engine == "BLENDER_EEVEE_NEXT":
+            scene.eevee.taa_render_samples = prefs.render_samples
+ 
+        # Switch to camera view
+        for area in context.screen.areas:
+            if area.type == "VIEW_3D":
+                area.spaces[0].region_3d.view_perspective = "CAMERA"
+                break
+ 
+        # Open render window (no file written)
+        bpy.ops.render.render("INVOKE_DEFAULT", write_still=False)
+ 
+        self.report({"INFO"}, "Viewport render opened")
+        return {"FINISHED"}
+ 
+ 
+class SKETCHUP_PT_RenderSettings(Panel):
+    bl_label = "SketchUp Render Settings"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "SketchUp"
+    bl_options = {"DEFAULT_CLOSED"}
+ 
+    def draw(self, context):
+        layout = self.layout
+        prefs = context.preferences.addons[__package__].preferences
+ 
+        layout.label(text="- Output -")
+        row = layout.row()
+        row.use_property_split = True
+        row.prop(prefs, "render_resolution_x")
+        row = layout.row()
+        row.use_property_split = True
+        row.prop(prefs, "render_resolution_y")
+        row = layout.row()
+        row.use_property_split = True
+        row.prop(prefs, "render_file_format")
+        row = layout.row()
+        row.use_property_split = True
+        row.prop(prefs, "render_output_dir")
+ 
+        layout.separator()
+        layout.label(text="- Sampling -")
+        row = layout.row()
+        row.use_property_split = True
+        row.prop(prefs, "render_samples")
+        row = layout.row()
+        row.use_property_split = True
+        row.prop(prefs, "render_denoise")
+ 
+        layout.separator()
+        layout.label(text="- Lighting -")
+        row = layout.row()
+        row.use_property_split = True
+        row.prop(prefs, "import_sun_light")
+        row = layout.row()
+        row.use_property_split = True
+        row.prop(prefs, "world_strength")
