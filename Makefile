@@ -58,8 +58,9 @@ install-ruby: ## Install Ruby gem dependencies (bundler)
 
 .PHONY: package dist
 package:      ## Build the .rbz extension archive
-dist:         ## Alias for package
-	cd ../.. && bundle exec ruby package.rb
+	bundle exec ruby package.rb
+
+dist: package  ## Alias for package
 
 # ── Docker (Windows 11 VM for SketchUp) ──────────────────────────
 
