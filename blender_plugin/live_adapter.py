@@ -14,6 +14,8 @@ import os
 import socket
 import tempfile
 
+# Debug logging flag — enables structured event emission for test observability
+DEBUG = os.environ.get("SKETCHUP_LINK_DEBUG", "").lower() in ("1", "true", "yes")
 
 # ---------------------------------------------------------------------------
 # Socket path — platform-aware, matches sketchup_link/constants.rb
@@ -98,6 +100,9 @@ def _fetch_model_json_unix(socket_path):
     try:
         conn.request("GET", "/model")
         resp = conn.getresponse()
+        if DEBUG:
+            import sys
+            print(f"[SKETCHUP_LINK_DEBUG] _fetch_model_json_unix: status={resp.status}", file=sys.stderr)
         if resp.status != 200:
             raise RuntimeError(f"sketchup-link returned HTTP {resp.status}")
         return json.loads(resp.read())

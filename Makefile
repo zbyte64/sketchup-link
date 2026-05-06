@@ -40,7 +40,7 @@ test-blender: ## Run Blender integration tests (headless, requires flatpak org.b
 	flatpak run org.blender.Blender --background --python $(abspath tests/integration/run_blender_tests.py)
 
 .PHONY: test-bdd test-bdd-screenshots test-bdd-sketchup
-test-bdd:     ## Run BDD structural tests (no screenshots, CI-safe)
+test-bdd: clean-pyc     ## Run BDD structural tests (no screenshots, CI-safe)
 	uv run pytest tests/bdd/ -v --no-screenshots
 
 test-bdd-screenshots:  ## Run BDD tests with screenshot capture
@@ -95,6 +95,9 @@ clean:        ## Remove Python/Ruby/Cargo build artifacts
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	cd $(BLENDER_PLUGIN) && rm -rf build/ sketchup.cpp *.so *.egg-info .pytest_cache 2>/dev/null || true
 	cd $(BLENDER_PLUGIN) && cargo clean --manifest-path $(RUST_MANIFEST) 2>/dev/null || true
+.PHONY: clean-pyc
+clean-pyc:     ## Remove all __pycache__ directories under tests/
+	find tests/ -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
 .PHONY: info
 info:         ## Show project metadata and paths
@@ -113,5 +116,14 @@ help:         ## Show this help
 	@grep -Eh '^[a-zA-Z_-]+:.*?## .+$$' $(MAKEFILE_LIST) | sort | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
+# ── Fuzz Testing ────────────────────────────────────────────────────
+
+.PHONY: test-fuzz test-fuzz-mock test-fuzz-single
+test-fuzz:      ## Run fuzz tests against real SketchUp VM
+	./integration/scripts/run-fuzz.sh
+test-fuzz-mock: ## Run fuzz tests against Ruby mock server (CI-safe)
+	uv run pytest tests/fuzz/ -v --fuzz-mock
+test-fuzz-single: ## Run a single mutation strategy  usage: make test-fuzz-single STRATEGY=<name>
+	uv run pytest tests/fuzz/ -v --fuzz-mock -k "$(STRATEGY)"
 # Default target
 .DEFAULT_GOAL := help

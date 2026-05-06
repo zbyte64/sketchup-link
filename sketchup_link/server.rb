@@ -199,6 +199,17 @@ module SketchupLink
         status, response = RemoteControl.handle(sub_path, params)
         respond(client, status, JSON.generate(response))
         remove_client(client)
+      when /\APOST \/log(\s|\z)/
+        body = _body
+        log_entry = begin
+                       body.nil? || body.strip.empty? ? {} : JSON.parse(body)
+                     rescue JSON::ParserError
+                       { 'raw' => body }
+                     end
+        SketchupLink.log("[API-LOG] #{JSON.generate(log_entry)}")
+        respond(client, 200, JSON.generate('ok' => true))
+        remove_client(client)
+
 
       else
         respond(client, 404, JSON.generate('error' => 'not found'))
