@@ -13,6 +13,7 @@ wheels/
 *.rbz
 
 tests/bdd/screenshots/
+tests/fuzz/artifacts/
 integration/scripts/diagnostics/
 integration/vm-storage/
 integration/shared/installers/

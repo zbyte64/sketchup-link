@@ -128,3 +128,67 @@ def step_implementation(request):
 
 The step function name does not matter; pytest-bdd matches by the string
 pattern. All step modules are imported by the scenario runner files.
+
+## Fuzz Testing
+
+The fuzz testing framework (`tests/fuzz/`) applies model mutations via the
+Remote Control API `/control/*` endpoints and verifies structural invariants.
+
+### Running
+
+```bash
+# CI-safe mode (against Ruby mock server)
+uv run pytest tests/fuzz/ -v --fuzz-mock
+
+# Full mode (against SketchUp VM)
+uv run pytest tests/fuzz/ -v --fuzz-real
+
+# Via Make
+make test-fuzz-mock
+make test-fuzz
+```
+
+### Mutation Strategies
+
+| Strategy | Description |
+|----------|-------------|
+| `AddFaceMutation` | POST `/control/geometry/face` with random polygon |
+| `DeleteEntityMutation` | POST `/control/geometry/delete` on a known entity |
+| `MoveGroupMutation` | POST `/control/geometry/transform` with random translation |
+| `ChangeMaterialMutation` | POST `/control/material` with random RGB |
+| `ToggleLayerMutation` | POST `/control/layer` toggling visibility |
+| `AddComponentMutation` | POST `/control/geometry/component` using existing definition |
+| `DeleteMaterialMutation` | POST `/control/material/delete` and re-add |
+| `CompositeMutation` | Applies N sub-mutations in sequence |
+| `StressSequence` | Applies 20+ random mutations rapidly |
+
+### Invariants Checked
+
+| Invariant | What it verifies |
+|-----------|-----------------|
+| `json_valid` | Model JSON is parseable and has required top-level keys |
+| `no_dangling_material_refs` | Every material name referenced by entities exists in materials list |
+| `no_dangling_layer_refs` | Every layer name referenced by entities exists in layers list |
+| `valid_transforms` | All transform matrices have det ≈ 1, no NaN/Inf |
+| `non_degenerate_faces` | Every face has ≥ 3 vertices, non-zero area |
+| `entity_ids_unique` | No duplicate persistent_ids |
+| `component_defs_intact` | All component definition names referenced by instances exist |
+| `model_roundtrips` | JsonModel(model_json) can be constructed and iterated without error |
+
+### Artifacts
+
+On each fuzz run, per-test artifacts are written to `tests/fuzz/artifacts/<test_name>/`:
+
+```
+events.jsonl         # Timestamped event log
+model_baseline.json  # Pre-mutation snapshot
+model_after.json     # Post-mutation snapshot
+model_diff.json      # Structured diff
+violations.json      # Invariant violations
+```
+
+Use the `diagnose.py` CLI to produce readable failure reports:
+
+```bash
+python tests/observability/diagnose.py tests/fuzz/artifacts/<test_name>/
+```

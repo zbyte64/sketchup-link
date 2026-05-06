@@ -110,6 +110,29 @@ def _fetch_json_tcp(host=_TCP_HOST, port=_TCP_PORT):
     finally:
         conn.close()
 
+def _post_control(request, control_path, body):
+    """POST JSON body to a /control/* endpoint.
+
+    Supports both Unix socket (CI/mock mode) and TCP (full VM mode).
+    Returns (status, response_dict).
+    """
+    json_body = json.dumps(body) if body is not None else ''
+    mode = getattr(request.node, '_connection_mode', 'unix')
+    if mode == 'tcp':
+        host = getattr(request.node, '_tcp_host', _TCP_HOST)
+        port = getattr(request.node, '_tcp_port', _TCP_PORT)
+        conn = http.client.HTTPConnection(host, port, timeout=10)
+    else:
+        socket_path = _get_socket_path(request)
+        conn = _UnixSocketHTTPConnection(socket_path)
+    try:
+        conn.request('POST', f'/control/{control_path}', body=json_body,
+                     headers={'Content-Type': 'application/json'})
+        resp = conn.getresponse()
+        data = json.loads(resp.read())
+        return resp.status, data
+    finally:
+        conn.close()
 # ---------------------------------------------------------------------------
 # Error server helper — minimal Python Unix-socket HTTP server for
 # testing error responses. Runs in a daemon thread.
@@ -461,18 +484,57 @@ def when_import_to_blender(request, no_screenshots):
 
 
 @when('I move the FurnitureGroup in SketchUp')
-def when_move_furniture_group():
-    pytest.skip('Full VM mode not implemented')
+def when_move_furniture_group(request):
+    """Move the FurnitureGroup via remote control API.
+
+    Finds the FurnitureGroup persistent_id from the current model,
+    then POSTs a translated transform to /control/geometry/transform.
+    """
+    socket_path = _get_socket_path(request)
+    data = _fetch_json(socket_path)
+    entities = data.get('entities', [])
+    furniture = [e for e in entities if e.get('type') == 'Group' and e.get('name') == 'FurnitureGroup']
+    if not furniture:
+        # In mock mode, the server returns canned responses regardless
+        status, resp_data = _post_control(request, 'geometry/transform',
+            {'persistent_id': 99999, 'transformation': [1, 0, 0, 0.5, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]})
+        assert status == 200, f"Move group failed: HTTP {status}: {resp_data}"
+        request.node._imported_model = data
+        return
+    pid = furniture[0].get('persistent_id')
+    transform = [1, 0, 0, 0.5,  # translate +0.5m in X
+                 0, 1, 0, 0,
+                 0, 0, 1, 0,
+                 0, 0, 0, 1]
+    status, resp_data = _post_control(request, 'geometry/transform',
+        {'persistent_id': pid, 'transformation': transform})
+    assert status == 200, f"Move group failed: HTTP {status}: {resp_data}"
+    request.node._imported_model = _fetch_json(socket_path)
 
 
 @when('I change the Red material color in SketchUp')
-def when_change_material_color():
-    pytest.skip('Full VM mode not implemented')
+def when_change_material_color(request):
+    """Change the Red material color via remote control API.
+
+    POSTs a new RGB color to /control/material for the Red material.
+    """
+    status, resp_data = _post_control(request, 'material',
+        {'name': 'Red', 'color': {'r': 100, 'g': 200, 'b': 50}})
+    assert status == 200, f"Change material failed: HTTP {status}: {resp_data}"
+    request.node._imported_model = _fetch_json(_get_socket_path(request))
 
 
 @when('I create a new face in SketchUp')
-def when_create_new_face():
-    pytest.skip('Full VM mode not implemented')
+def when_create_new_face(request):
+    """Create a new face via remote control API.
+
+    POSTs a polygon to /control/geometry/face.
+    """
+    points = [[0, 0, 0], [2, 0, 0], [2, 2, 0], [0, 2, 0]]
+    status, resp_data = _post_control(request, 'geometry/face',
+        {'points': points, 'material': 'Red', 'layer': 'Layer0'})
+    assert status == 200, f"Create face failed: HTTP {status}: {resp_data}"
+    request.node._imported_model = _fetch_json(_get_socket_path(request))
 
 @when('I trigger a live sync update')
 def when_trigger_sync_update(request):
@@ -1119,3 +1181,27 @@ def then_all_entity_iterables_empty(request):
     assert len(faces) == 0, f"Expected 0 faces, got {len(faces)}"
     assert len(groups) == 0, f"Expected 0 groups, got {len(groups)}"
     assert len(instances) == 0, f"Expected 0 instances, got {len(instances)}"
+# =========================================================================
+# WHEN steps — Mutation / Stress
+# =========================================================================
+
+
+@when('I apply a stress mutation sequence')
+def when_stress_mutation_sequence(request):
+    """Apply a rapid sequence of mutations via the remote control API.
+
+    Performs multiple POST requests in quick succession to stress-test
+    the live sync pipeline. In mock mode, the server returns canned
+    responses for all endpoints.
+    """
+    mutations = [
+        ('geometry/face', {'points': [[0, 0, 0], [1, 0, 0], [1, 1, 0]], 'material': 'Red'}),
+        ('material', {'name': 'Red', 'color': {'r': 50, 'g': 100, 'b': 150}}),
+        ('layer', {'name': 'Hidden', 'visible': True}),
+        ('geometry/face', {'points': [[-1, -1, 0], [0, -1, 0], [0, 0, 0]], 'material': 'Blue'}),
+        ('layer', {'name': 'Hidden', 'visible': False}),
+        ('material', {'name': 'Blue', 'color': {'r': 200, 'g': 50, 'b': 50}}),
+    ]
+    for path, body in mutations:
+        _post_control(request, path, body)
+    request.node._imported_model = _fetch_json(_get_socket_path(request))

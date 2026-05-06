@@ -174,6 +174,18 @@ def handle_client(client)
     body_start = buf.index("\r\n\r\n")
     body_json = body_start ? buf[(body_start + 4)..] : ''
     handle_control(client, path, body_json)
+  elsif method == 'POST' && path_no_query == '/log'
+    # Extract body and log to stderr for test diagnosis
+    body_start = buf.index("\r\n\r\n")
+    body_json = body_start ? buf[(body_start + 4)..] : ''
+    log_entry = begin
+      JSON.parse(body_json)
+    rescue JSON::ParserError
+      { 'raw' => body_json }
+    end
+    $stderr.puts "[TEST-LOG] #{JSON.generate(log_entry)}"
+    $stderr.flush
+    respond(client, 200, JSON.generate({ 'ok' => true }))
   else
     respond(client, 404, JSON.generate({ 'error' => 'not found' }))
   end

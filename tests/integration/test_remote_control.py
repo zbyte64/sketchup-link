@@ -438,3 +438,47 @@ class TestRemoteControlErrors:
             assert 'invalid JSON' in data['error']
         finally:
             conn.close()
+# ===========================================================================
+# Log endpoint (test observability)
+# ===========================================================================
+
+
+class TestRemoteControlLog:
+    """Tests for the POST /log endpoint."""
+
+    def test_log_basic_message(self, ruby_server):
+        status, data = _post(ruby_server, '/log', {
+            'message': 'test log entry',
+            'level': 'info',
+        })
+        assert status == 200
+        assert data == {'ok': True}
+
+    def test_log_empty_body(self, ruby_server):
+        status, data = _post(ruby_server, '/log', None)
+        assert status == 200
+        assert data == {'ok': True}
+
+    def test_log_with_event_data(self, ruby_server):
+        status, data = _post(ruby_server, '/log', {
+            'event': 'mutation_applied',
+            'strategy': 'AddFaceMutation',
+            'status': 200,
+        })
+        assert status == 200
+        assert data == {'ok': True}
+
+    def test_log_with_invalid_json_is_200(self, ruby_server):
+        """Send non-JSON — log endpoint gracefully handles and returns 200."""
+        from conftest import _UnixSocketHTTPConnection
+        conn = _UnixSocketHTTPConnection(ruby_server)
+        try:
+            conn.request('POST', '/log',
+                         body='not valid json{{{',
+                         headers={'Content-Type': 'application/json'})
+            resp = conn.getresponse()
+            data = json.loads(resp.read())
+            assert resp.status == 200
+            assert data == {'ok': True}
+        finally:
+            conn.close()
