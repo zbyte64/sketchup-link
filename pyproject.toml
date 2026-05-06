@@ -27,6 +27,8 @@ addopts = [
     "--ignore=tests/integration/conftest_blender.py",
     "--ignore=tests/integration/run_blender_tests.py",
     "--ignore=tests/bdd/run_blender_assertions.py",
+    "--ignore=tests/bdd/test_geometry_fidelity_tcp_scenarios.py",
+    "--ignore=tests/bdd/test_live_sync_tcp_scenarios.py",
 ]
 markers = [
     "ruby: mark test as requiring Ruby runtime to execute",

@@ -1,0 +1,91 @@
+# sketchup-link CI
+#
+# Runs every push/PR on main. Three jobs:
+#   1. unit-python  — pure-Python tests, no Ruby needed (fast)
+#   2. test         — full test suite: unit (Ruby-marked), integration, fuzz (mock), BDD (no screenshots)
+#   3. package      — builds .rbz extension archive
+#
+# Excluded from CI (require proprietary SDK or running Blender/VM):
+#   - Cython/Rust SDK bindings build
+#   - test_blender_import.py (requires Blender's bpy)
+#   - Docker VM-dependent tests (--fuzz-real, BDD with screenshots)
+---
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  # ── Job 1: Pure-Python unit tests (no Ruby) ──────────────────────
+  unit-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run pure-Python unit tests
+        run: uv run pytest tests/unit/test_python_skp_util.py -v
+
+  # ── Job 2: Full test suite (requires Ruby + Python) ──────────────
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+
+      - name: Run all tests (excludes blender imports)
+        run: uv run pytest tests/ -v
+
+      - name: Run fuzz tests (mock mode)
+        run: uv run pytest tests/fuzz/ -v --fuzz-mock
+
+      - name: Run BDD tests (CI-safe, no screenshots)
+        run: uv run pytest tests/bdd/ -v --no-screenshots
+
+  # ── Job 3: Package .rbz archive ──────────────────────────────────
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+
+      - name: Build extension archive
+        run: bundle exec ruby package.rb
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sketchup-link-rbz
+          path: dist/sketchup-link-*.rbz
+          if-no-files-found: error
