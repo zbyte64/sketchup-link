@@ -17,7 +17,10 @@ SKP_SDK       ?= $(SKETCHUP_SDK_PATH)
 install:      ## Install Python dependencies (uv sync)
 	uv sync
 
-.PHONY: test test-all
+.PHONY: test test-unit test-all
+test-unit:    ## Run unit tests only (fast, CI-safe)
+	uv run pytest tests/unit/ -v
+
 test:         ## Run all Python tests (pytest)
 	uv run pytest tests/ -v $(ARGS)
 

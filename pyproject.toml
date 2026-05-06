@@ -17,7 +17,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests/integration", "tests/bdd"]
+testpaths = ["tests/unit", "tests/integration", "tests/bdd"]
 # test_blender_import.py requires Blender's bpy — excluded from regular runs
 # run_blender_assertions.py is a Blender headless entry point, not a test scenario
 addopts = [
@@ -26,4 +26,6 @@ addopts = [
     "--ignore=tests/integration/run_blender_tests.py",
     "--ignore=tests/bdd/run_blender_assertions.py",
 ]
-
+markers = [
+    "ruby: mark test as requiring Ruby runtime to execute",
+]
