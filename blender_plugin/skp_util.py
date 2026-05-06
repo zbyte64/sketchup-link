@@ -2,6 +2,7 @@
 
 from collections import OrderedDict, defaultdict
 from enum import Enum
+import deal
 
 
 default_material_name = "DefaultMaterial"
@@ -43,14 +44,17 @@ class keep_offset(defaultdict):
         return number
 
 
-def group_name(name, material):
+@deal.pure
+@deal.ensure(lambda name, material, result: result == name if material == default_material_name else result == f"{name}_{material}")
+def group_name(name: str, material: str) -> str:
     if material != default_material_name:
         return f"{name}_{material}"
     else:
         return name
 
 
-def group_safe_name(name):
+@deal.ensure(lambda name, result: result == name if name else result.startswith("No_Name_"))
+def group_safe_name(name: str) -> str:
     if not name:
         global su_group_num
         su_group_num += 1
@@ -61,7 +65,9 @@ def group_safe_name(name):
     return name
 
 
-def inherent_default_mat(mat, default_material):
+@deal.pure
+@deal.ensure(lambda mat, default_material, result: result == (mat.name if mat else default_material))
+def inherent_default_mat(mat, default_material: str) -> str:
     mat_name = mat.name if mat else default_material
     if mat_name == (default_material_name and default_material != default_material_name):
         mat_name = default_material

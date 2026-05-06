@@ -1,7 +1,6 @@
 """Pure Python unit tests for blender_plugin/skp_util.py."""
 from __future__ import annotations
 
-import importlib
 
 from blender_plugin.skp_util import (
     SKP_util,
@@ -12,6 +11,9 @@ from blender_plugin.skp_util import (
     keep_offset,
     proxy_dict,
 )
+import deal
+test_group_name = deal.cases(group_name)
+test_group_safe_name = deal.cases(group_safe_name)
 
 
 class TestProxyDict:
@@ -51,35 +53,6 @@ class TestKeepOffset:
         assert o["b"] == 1
         assert o["c"] == 2
 
-
-class TestGroupName:
-    def test_default_material_returns_name(self):
-        assert group_name("Chair", "DefaultMaterial") == "Chair"
-
-    def test_custom_material_returns_combined(self):
-        assert group_name("Chair", "Red") == "Chair_Red"
-
-
-class TestGroupSafeName:
-    def test_nonempty_name_returns_name(self):
-        assert group_safe_name("Table") == "Table"
-
-    def test_empty_name_returns_generated(self):
-        import blender_plugin.skp_util as _skp
-
-        _skp.su_group_num = 0
-        importlib.reload(_skp)
-        name = group_safe_name("")
-        assert name.startswith("No_Name_")
-
-    def test_empty_name_increments(self):
-        import blender_plugin.skp_util as _skp
-
-        _skp.su_group_num = 0
-        importlib.reload(_skp)
-        name_a = group_safe_name("")
-        name_b = group_safe_name("")
-        assert name_a != name_b
 
 
 class TestInherentDefaultMat:

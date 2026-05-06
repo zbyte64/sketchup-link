@@ -12,6 +12,7 @@ import http.client
 import json
 import os
 import socket
+import deal
 import tempfile
 
 # Debug logging flag — enables structured event emission for test observability
@@ -351,7 +352,9 @@ class JsonEntities:
 # Group / Instance
 # ---------------------------------------------------------------------------
 
-def _flat_to_4x4(flat):
+@deal.ensure(lambda flat, result: isinstance(result, list) and len(result) == 4 and all(isinstance(row, list) and len(row) == 4 for row in result))
+@deal.pre(lambda flat: flat is None or (isinstance(flat, (list, tuple)) and len(flat) == 16))
+def _flat_to_4x4(flat: list | None) -> list:
     """Convert a 16-element row-major flat list to a 4×4 list-of-lists.
     Blender's Matrix() constructor requires a sequence of rows, not a flat list.
     """
