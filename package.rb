@@ -7,9 +7,8 @@ require 'fileutils'
 EXT_DIR  = __dir__
 DIST_DIR = File.join(__dir__, 'dist')
 
-# Extract version from constants.rb
-constants = File.read(File.join(EXT_DIR, 'sketchup_link/constants.rb'))
-version   = constants[/VERSION\s*=\s*['"]([^'"]+)['"]/, 1] or abort('Could not parse VERSION')
+# Read version from canonical VERSION file at repo root
+version = File.read(File.join(__dir__, 'VERSION')).strip
 
 output = File.join(DIST_DIR, "sketchup-link-#{version}.rbz")
 FileUtils.mkdir_p(DIST_DIR)

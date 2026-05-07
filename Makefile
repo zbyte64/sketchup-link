@@ -49,6 +49,31 @@ test-bdd-screenshots:  ## Run BDD tests with screenshot capture
 test-bdd-sketchup:  ## Launch SketchUp in VM, create test model, run screenshot tests
 	./integration/shared/scripts/sketchup_launch_and_test.sh
 
+#
+# ── Version management ────────────────────────────────────────────
+#
+
+.PHONY: version-check
+version-check: ## Validate all version references match the canonical VERSION file
+	@V=$$(cat VERSION | tr -d '\n'); \
+	RB=$$(grep -A0 "VERSION\s*=" sketchup_link/constants.rb | sed "s/.*'\(.*\)'.*/\1/"); \
+	PY=$$(grep "^version " blender_plugin/pyproject.toml | sed 's/version = "\(.*\)"/\1/'); \
+	MF=$$(grep "^version " blender_plugin/blender_manifest.toml | sed 's/version = "\(.*\)"/\1/'); \
+	ALL_OK=true; \
+	if [ "$$V" != "$$RB" ]; then echo "MISMATCH: VERSION=$$V, constants.rb=$$RB"; ALL_OK=false; fi; \
+	if [ "$$V" != "$$PY" ]; then echo "MISMATCH: VERSION=$$V, pyproject.toml=$$PY"; ALL_OK=false; fi; \
+	if [ "$$V" != "$$MF" ]; then echo "MISMATCH: VERSION=$$V, blender_manifest.toml=$$MF"; ALL_OK=false; fi; \
+	$$ALL_OK || (echo "Version mismatch! Run 'make set-version VERSION=x.y.z' to fix."; exit 1); \
+	if $$ALL_OK; then echo "All version references match: $$V"; fi
+
+.PHONY: set-version
+set-version: ## Set a new version across all files  usage: make set-version VERSION=x.y.z
+	@if [ -z "$(VERSION)" ]; then echo "Usage: make set-version VERSION=x.y.z"; exit 1; fi; \
+	echo "$(VERSION)" > VERSION; \
+	python3 scripts/stamp_version.py; \
+	perl -i -pe "s/(VERSION\s*=\s*')[^']*(')/\1$(VERSION)\2/" sketchup_link/constants.rb; \
+	echo "Version set to $(VERSION)"; \
+	$(MAKE) version-check
 
 # ── Ruby (SketchUp plugin) ───────────────────────────────────────
 
@@ -62,6 +87,30 @@ package:      ## Build the .rbz extension archive
 
 dist: package  ## Alias for package
 
+#
+# ── Python addon packaging (Blender extension) ───────────────────
+#
+
+.PHONY: package-python
+package-python: ## Build the .zip extension archive for Blender
+	@V=$$(cat VERSION | tr -d '\n'); \
+	OUT="dist/sketchup_link-$${V}.zip"; \
+	mkdir -p dist; \
+	rm -f "$$OUT"; \
+	cd blender_plugin && \
+	zip -r "../$$OUT" \
+		__init__.py \
+		blender_manifest.toml \
+		live_adapter.py \
+		live_sync.py \
+		log_config.py \
+		preferences.py \
+		scene_importer.py \
+		skp_util.py; \
+	echo "Created: $$OUT"
+
+.PHONY: release
+release: version-check package package-python ## Run version-check, package, and package-python sequentially
 # ── Docker (Windows 11 VM for SketchUp) ──────────────────────────
 
 .PHONY: docker-up docker-down docker-restart docker-logs

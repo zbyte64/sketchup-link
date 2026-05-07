@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sketchup-link-importer"
-version = "0.28.0"
+version = "1.1.0"
 authors = [
     {name = "Martijn Berger"},
     {name = "Jason Kraus"},

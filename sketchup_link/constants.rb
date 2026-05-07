@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module SketchupLink
-  VERSION        = '1.0.0'.freeze
+  VERSION        = '1.1.0'.freeze
   EXTENSION_ID   = 'com.sketchuplink'.freeze
   TIMER_INTERVAL = 0.05
 

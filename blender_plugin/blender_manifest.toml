@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "sketchup_link"
-version = "0.28.0"
+version = "1.1.0"
 name = "SketchUp Link & Importer"
 tagline = "Live sync from SketchUp to Blender + native .skp file import"
 maintainer = "Jason Kraus"

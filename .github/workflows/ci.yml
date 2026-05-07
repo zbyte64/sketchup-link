@@ -1,14 +1,16 @@
 # sketchup-link CI
 #
-# Runs every push/PR on main. Three jobs:
-#   1. unit-python  — pure-Python tests, no Ruby needed (fast)
-#   2. test         — full test suite: unit (Ruby-marked), integration, fuzz (mock), BDD (no screenshots)
-#   3. package      — builds .rbz extension archive
+# Runs every push/PR on main. Four jobs:
+#   1. unit-python    — pure-Python tests, no Ruby needed (fast)
+#   2. test           — full test suite: unit (Ruby-marked), integration, fuzz (mock), BDD (no screenshots)
+#   3. version-check  — validates all version references match the canonical VERSION file
+#   4. package        — builds .rbz (Ruby) and .zip (Python) extension archives
 #
 # Excluded from CI (require proprietary SDK or running Blender/VM):
 #   - Cython/Rust SDK bindings build
 #   - test_blender_import.py (requires Blender's bpy)
 #   - Docker VM-dependent tests (--fuzz-real, BDD with screenshots)
+#   - SDK header and library files (proprietary Trimble IP, gitignored)
 ---
 name: CI
 
@@ -68,8 +70,18 @@ jobs:
       - name: Run BDD tests (CI-safe, no screenshots)
         run: uv run pytest tests/bdd/ -v --no-screenshots
 
-  # ── Job 3: Package .rbz archive ──────────────────────────────────
+  # ── Job 3: Version consistency check ─────────────────────────────
+  version-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check all version references match
+        run: make version-check
+
+  # ── Job 4: Package extension archives ────────────────────────────
   package:
+    needs: [version-check]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -80,12 +92,22 @@ jobs:
           ruby-version: "3.2"
           bundler-cache: true
 
-      - name: Build extension archive
+      - name: Build Ruby extension archive (.rbz)
         run: bundle exec ruby package.rb
 
-      - name: Upload artifact
+      - name: Build Python extension archive (.zip)
+        run: make package-python
+
+      - name: Upload Ruby artifact
         uses: actions/upload-artifact@v4
         with:
           name: sketchup-link-rbz
           path: dist/sketchup-link-*.rbz
+          if-no-files-found: error
+
+      - name: Upload Python artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sketchup-link-python
+          path: dist/sketchup_link-*.zip
           if-no-files-found: error

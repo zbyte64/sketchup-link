@@ -119,7 +119,7 @@ class TestSubscriptionManagerRuby:
             {"action": "status"},
         ])
         status = results[2]
-        assert status["version"] == "1.0.0"
+        assert status["version"] == "1.1.0"
         assert isinstance(status["model"], str)
         assert status["subscriptions"] == 2
 
