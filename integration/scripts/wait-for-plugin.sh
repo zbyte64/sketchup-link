@@ -217,8 +217,14 @@ dismiss_tos_dialog() {
     local found=false
     local box x y cx cy
 
+
+    # Try Escape to dismiss any foreground dialog (Bing, terms, etc.)
+    log "  Trying Escape to dismiss any foreground dialog..."
+    agent-rdp --session sketchup-link keyboard press "escape" 2>/dev/null || true
+    sleep 2
+
     # Try multiple search terms for the dialog button and window title
-    for search_term in "Agree" "Accept" "I Agree" "Terms" "License" "EULA"; do
+    for search_term in "Agree" "Accept" "I Agree" "Terms" "License" "EULA" "Continue" "Let's go" "Not now" "Privacy" "Bing"; do
         if box=$(agent-rdp --session sketchup-link locate "$search_term" 2>/dev/null); then
             log "  Found '$search_term' on screen — dismissing dialog"
             # Parse numeric coordinates from locate output
