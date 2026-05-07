@@ -19,6 +19,7 @@ module SketchupLink
         tcp_port: tcp_port
       }
       @server.start(config)
+      SketchupLink.log(:info, 'Plugin initialized', mode: config[:mode], socket_path: socket_path, tcp_port: tcp_port)
       Sketchup.add_observer(Observer::AppObserver.new(self))
       add_menu_items
     end
@@ -46,6 +47,7 @@ module SketchupLink
       File.write(path, json)
       UI.messagebox("Model JSON saved to #{path}")
     rescue StandardError => e
+      SketchupLink.log_error('Failed to save model JSON', e)
       UI.messagebox("Failed to save model JSON: #{e.message}")
     end
 
@@ -93,6 +95,7 @@ module SketchupLink
       @server.start(config)
 
       mode_label = use_tcp ? 'TCP' : 'Unix Socket'
+      SketchupLink.log(:info, 'Config applied and server restarted', mode: mode_label, socket_path: socket_path, tcp_port: tcp_port)
       UI.messagebox(
         "Connection settings saved and server restarted.\n\n" \
         "Mode: #{mode_label}\n" \
@@ -113,10 +116,12 @@ module SketchupLink
         tcp_port: tcp_port
       }
       @server.start(config)
+      SketchupLink.log(:info, 'Server restarted', mode: use_tcp ? :tcp : :unix, socket_path: socket_path, tcp_port: tcp_port)
       UI.messagebox('Server restarted with current settings.')
     end
 
     def stop
+      SketchupLink.log(:info, 'Plugin stopping')
       @server.stop
     end
   end

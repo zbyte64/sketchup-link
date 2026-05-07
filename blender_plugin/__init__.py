@@ -17,10 +17,12 @@ from .live_sync import (
 )
 from .preferences import SketchupAddonPreferences
 from .scene_importer import ExportSKP, ImportSKP, LiveImportSKP, menu_func_export, menu_func_import, menu_func_live_import
+from . import log_config
 
 
 def register():
     """Register all operators, panels, preferences, and menu items."""
+    log_config.get_logger()  # Initialize logger on addon registration
     bpy.utils.register_class(SketchupAddonPreferences)
     bpy.utils.register_class(ImportSKP)
     bpy.types.TOPBAR_MT_file_import.append(menu_func_import)

@@ -30,4 +30,8 @@ module SketchupLink
     EVT_MODEL_SAVE,         EVT_MODEL_OPEN,       EVT_MODEL_CLOSE
   ].freeze
   REMOTE_CONTROL_ENABLED = true.freeze
+  LOG_FILE = File.join(ENV['TEMP'] || ENV['TMP'] || '/tmp', 'sketchup-link.log').freeze
+  LOG_LEVEL = (ENV['SKETCHUP_LINK_LOG_LEVEL']&.to_sym) || :INFO
+  LOG_MAX_SIZE = 2 * 1024 * 1024
+  LOG_MAX_FILES = 3
 end

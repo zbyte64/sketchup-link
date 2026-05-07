@@ -52,7 +52,8 @@ module SketchupLink
           'fov'          => perspective ? fov.to_f : 0.0,
           'aspect_ratio' => aspect_ratio.is_a?(Numeric) ? aspect_ratio.to_f : false
         }
-      rescue StandardError
+      rescue StandardError => e
+        SketchupLink.log_error('serialize_camera failed', e)
         nil
       end
 
@@ -72,7 +73,8 @@ module SketchupLink
           'use_sun_for_shading' => si['UseSunForShading'] == true,
           'shadow_time'       => si['ShadowTime'].to_i,
         }
-      rescue StandardError
+      rescue StandardError => e
+        SketchupLink.log_error('serialize_shadow_info failed', e)
         nil
       end
     end

@@ -33,6 +33,12 @@ end
 # ------------------------------------------------------------------
 # Load serializer sources
 # ------------------------------------------------------------------
+# Stub logging — no log file in test mode
+module SketchupLink
+  def self.log(level, msg, context = {}); end
+  def self.log_error(msg, exception, context = {}); end
+end
+
 
 serializer_dir = File.join(ENV.fetch('RUBY_PLUGIN_SOURCE'), 'sketchup_link/serializer')
 $LOAD_PATH << serializer_dir

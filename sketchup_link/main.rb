@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'constants'
+require_relative 'logger'
 require_relative 'serializer/transform_serializer'
 require_relative 'serializer/entity_serializer'
 require_relative 'serializer/model_serializer'
@@ -19,3 +20,4 @@ require_relative 'remote_control'
 file_loaded(__FILE__)
 
 SketchupLink::PLUGIN ||= SketchupLink::Plugin.new
+SketchupLink.log(:info, 'Plugin loaded', version: SketchupLink::VERSION)

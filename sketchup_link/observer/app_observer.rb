@@ -11,15 +11,18 @@ module SketchupLink
 
       def onNewModel(model)
         reattach_model_observers(model)
+        SketchupLink.log(:info, 'New model created', guid: model.guid)
         @plugin.event_dispatcher.on_model_open(model)
       end
 
       def onOpenModel(model)
         reattach_model_observers(model)
+        SketchupLink.log(:info, 'Model opened', path: model.path, guid: model.guid)
         @plugin.event_dispatcher.on_model_open(model)
       end
 
       def onQuit
+        SketchupLink.log(:info, 'SketchUp quitting')
         @plugin.event_dispatcher.on_model_close(Sketchup.active_model)
         @plugin.stop
       end
@@ -35,11 +38,11 @@ module SketchupLink
         @materials_observer  ||= MaterialsObserver.new(@plugin.event_dispatcher)
         @layers_observer     ||= LayersObserver.new(@plugin.event_dispatcher)
 
-        model.add_observer(@model_observer)
-        model.entities.add_observer(@entities_observer)
-        model.selection.add_observer(@selection_observer)
-        model.materials.add_observer(@materials_observer)
-        model.layers.add_observer(@layers_observer)
+        model.add_observer(@model_observer) rescue SketchupLink.log(:warn, 'Failed to add model observer')
+        model.entities.add_observer(@entities_observer) rescue SketchupLink.log(:warn, 'Failed to add entities observer')
+        model.selection.add_observer(@selection_observer) rescue SketchupLink.log(:warn, 'Failed to add selection observer')
+        model.materials.add_observer(@materials_observer) rescue SketchupLink.log(:warn, 'Failed to add materials observer')
+        model.layers.add_observer(@layers_observer) rescue SketchupLink.log(:warn, 'Failed to add layers observer')
       end
     end
   end

@@ -12,6 +12,7 @@ module SketchupLink
     # Registers client_socket as a subscriber. Returns the subscription uuid.
     def subscribe(client_socket, events)
       id = SecureRandom.uuid
+      SketchupLink.log(:info, 'Subscribed', id: id, events: events.inspect)
       @subscriptions[id] = { events: events, socket: client_socket }
       id
     end
@@ -19,6 +20,7 @@ module SketchupLink
     # Closes and removes the subscription by id.
     def unsubscribe(id)
       entry = @subscriptions.delete(id)
+      SketchupLink.log(:info, 'Unsubscribed', id: id)
       return unless entry
 
       entry[:socket].close rescue nil
@@ -26,12 +28,17 @@ module SketchupLink
 
     # Called by Server when a socket is removed (EOF / EPIPE / explicit close).
     def remove_by_socket(socket)
+      removed = @subscriptions.select { |_id, sub| sub[:socket].equal?(socket) }
       @subscriptions.reject! { |_id, sub| sub[:socket].equal?(socket) }
+      unless removed.empty?
+        SketchupLink.log(:info, 'Removed subscriber by socket', count: removed.size)
+      end
     end
 
     # Pushes an event to all matching subscribers via their persistent sockets.
     # Dead sockets are pruned automatically.
     def dispatch(event, payload)
+      SketchupLink.log(:debug, 'Dispatching event', event: event, subscribers: @subscriptions.size)
       line = JSON.generate(payload) + "\n"
       chunk = make_chunk(line)
       dead = []
@@ -47,7 +54,10 @@ module SketchupLink
         end
       end
 
-      dead.each { |id| @subscriptions.delete(id) }
+      unless dead.empty?
+        SketchupLink.log(:warn, 'Pruned dead subscribers', count: dead.size)
+        dead.each { |id| @subscriptions.delete(id) }
+      end
     end
 
     def status

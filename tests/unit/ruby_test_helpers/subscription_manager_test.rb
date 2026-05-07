@@ -15,6 +15,12 @@ require 'stringio'
 # ------------------------------------------------------------------
 # Load real source files
 # ------------------------------------------------------------------
+# Stub logging — no log file in test mode
+module SketchupLink
+  def self.log(level, msg, context = {}); end
+  def self.log_error(msg, exception, context = {}); end
+end
+
 
 $LOAD_PATH.unshift(ENV.fetch('RUBY_PLUGIN_SOURCE'))
 require 'sketchup_link/constants'

@@ -51,22 +51,11 @@ from .skp_util import (
 )
 from .live_adapter import DEFAULT_SOCKET_PATH, JsonModel, fetch_model_json, _build_conn_config
 from .preferences import SketchupAddonPreferences
+from .log_config import get_logger
+
+logger = get_logger()
 
 
-DEBUG = False
-
-LOGS = True
-
-MIN_LOGS = False
-
-if not LOGS:
-    MIN_LOGS = True
-
-
-def skp_log(*args):
-    # Log output by pre-pending "SU |"
-    if len(args) > 0:
-        print("SU | " + " ".join(["%s" % a for a in args]))
 
 
 def create_nested_collection(coll_name):
@@ -137,8 +126,7 @@ class SceneImporter:
         _time_main = time.time()
 
         # Log filename being imported
-        if LOGS:
-            skp_log(f"Importing: {self.filepath}")
+        logger.info(f"Importing: {self.filepath}")
         addon_name = __package__ or __name__.split(".")[0]
         self.prefs = context.preferences.addons[addon_name].preferences
 
@@ -155,15 +143,11 @@ class SceneImporter:
             try:
                 self.skp_model = sketchup.Model.from_file(self.filepath)
             except Exception as e:
-                if LOGS:
-                    skp_log(f"Error reading input file: {self.filepath}")
-                    skp_log(e)
+                logger.warning(f"Error reading input file: {self.filepath}: {e}")
                 return {"FINISHED"}
 
         # Start stopwatch for camera import
-        if not MIN_LOGS:
-            skp_log("")
-            skp_log("=== Importing Sketchup scenes and views as Blender Cameras ===")
+        logger.info("=== Importing Sketchup scenes and views as Blender Cameras ===")
         _time_camera = time.time()
 
         # Create collection for cameras
@@ -176,30 +160,26 @@ class SceneImporter:
             options["import_camera"] = True
             for s in self.skp_model.scenes:
                 if s.name == options["import_scene"]:
-                    if not MIN_LOGS:
-                        skp_log(f"Importing named SketchUp scene '{s.name}'")
+                    logger.info(f"Importing named SketchUp scene '{s.name}'")
                     self.scene = s
 
                     # Skip s.layers which are the invisible layers
                     self.layers_skip = [l for l in s.layers]
-            if not self.layers_skip and not MIN_LOGS:
-                skp_log("Scene: '{}' didn't have any invisible layers.".format(options["import_scene"]))
-            if self.layers_skip != [] and not MIN_LOGS:
+            if not self.layers_skip:
+                logger.info("Scene: '{}' didn't have any invisible layers.".format(options["import_scene"]))
+            if self.layers_skip != []:
                 hidden_layers = sorted([l.name for l in self.layers_skip])
-                print("SU | Invisible Layer(s)/Tag(s): \n     ", end="")
-                print(*hidden_layers, sep=", ")
+                logger.info("Invisible Layer(s)/Tag(s): " + ", ".join(hidden_layers))
 
         # Import each scene as a Blender camera
         if options["scenes_as_camera"]:
-            if not MIN_LOGS:
-                skp_log("Importing all SketchUp scenes as Blender cameras")
+            logger.info("Importing all SketchUp scenes as Blender cameras")
             for s in self.skp_model.scenes:
                 self.write_camera(s.camera, s.name)
 
         # Set the active camera and use for 3D view
         if options["import_camera"]:
-            if not MIN_LOGS:
-                skp_log("Importing last SketchUp view as Blender camera")
+            logger.info("Importing last SketchUp view as Blender camera")
             if self.scene:
                 active_cam = self.write_camera(self.scene.camera, name=self.scene.name)
                 context.scene.camera = bpy.data.objects[active_cam]
@@ -211,17 +191,13 @@ class SceneImporter:
                     area.spaces[0].region_3d.view_perspective = "CAMERA"
                     break
         SKP_util.layers_skip = self.layers_skip
-        if not MIN_LOGS:
-            skp_log(f"Cameras imported in {(time.time() - _time_camera):.4f} sec.")
+        logger.info(f"Cameras imported in {(time.time() - _time_camera):.4f} sec.")
 
         # Start stopwatch for material imports
-        if not MIN_LOGS:
-            skp_log("")
-            skp_log("=== Importing Sketchup materials into Blender ===")
+        logger.info("=== Importing Sketchup materials into Blender ===")
         _time_material = time.time()
         self.write_materials(self.skp_model.materials)
-        if not MIN_LOGS:
-            skp_log(f"Materials imported in {(time.time() - _time_material):.4f} sec.")
+        logger.info(f"Materials imported in {(time.time() - _time_material):.4f} sec.")
 
         # Set up environment: sun light and world (Feature 1 & 4)
         try:
@@ -230,14 +206,10 @@ class SceneImporter:
                 self.write_sun_light(shadow_info)
                 self.write_world(shadow_info)
         except Exception as e:
-            if not MIN_LOGS:
-                skp_log(f"Environment setup error: {e}")
-                pass
+            logger.warning(f"Environment setup error: {e}")
 
         # Start stopwatch for component import
-        if not MIN_LOGS:
-            skp_log("")
-            skp_log("=== Importing Sketchup components into Blender ===")
+        logger.info("=== Importing Sketchup components into Blender ===")
         _time_analyze_depth = time.time()
 
         # Create collection for components
@@ -246,19 +218,14 @@ class SceneImporter:
         # Determine the number of components that exist in the SketchUp model
         self.skp_components = proxy_dict(self.skp_model.component_definition_as_dict)
         u_comps = [k for k, v in self.skp_components.items()]
-        if not MIN_LOGS:
-            print(f"SU | Contains {len(u_comps)} components: \n     ", end="")
-            print(*u_comps, sep=", ")
+        logger.info(f"Contains {len(u_comps)} components: " + ", ".join(u_comps))
 
         # Analyse component depths
         D = SKP_util()
         for c in self.skp_model.component_definitions:
             self.component_depth[c.name] = D.component_deps(c.entities)
-            if DEBUG:
-                print(f"     -- ({c.name}) --\n        Depth: {self.component_depth[c.name]}\n", end="")
-                print(f"        Instances (Used): {c.numInstances} ({c.numUsedInstances})")
-        if not MIN_LOGS:
-            skp_log(f"Component depths analyzed in {(time.time() - _time_analyze_depth):.4f} sec.")
+            logger.debug(f"     -- ({c.name}) --\n        Depth: {self.component_depth[c.name]}\n" + f"        Instances (Used): {c.numInstances} ({c.numUsedInstances})")
+        logger.info(f"Component depths analyzed in {(time.time() - _time_analyze_depth):.4f} sec.")
 
         # Import the components as duplicated groups then hide components
         self.write_duplicateable_groups()
@@ -278,9 +245,7 @@ class SceneImporter:
         # self.component_stats = defaultdict(list)
 
         # Start stopwatch for mesh objects import
-        if not MIN_LOGS:
-            skp_log("")
-            skp_log("=== Importing Sketchup mesh objects into Blender ===")
+        logger.info("=== Importing Sketchup mesh objects into Blender ===")
         _time_mesh_data = time.time()
 
         # Create collection for mesh objects
@@ -294,12 +259,10 @@ class SceneImporter:
                 self.instance_group_dupli_vert(name, mat, self.component_stats)
             else:
                 self.instance_group_dupli_face(name, mat, self.component_stats)
-        if not MIN_LOGS:
-            skp_log(f"Entities imported in {(time.time() - _time_mesh_data):.4f} sec.")
+        logger.info(f"Entities imported in {(time.time() - _time_mesh_data):.4f} sec.")
 
         # Importing has completed
-        if LOGS:
-            skp_log("Finished entire importing process in %.4f sec.\n" % (time.time() - _time_main))
+        logger.info("Finished entire importing process in %.4f sec." % (time.time() - _time_main))
 
         # hide_one_level()
 
@@ -333,12 +296,12 @@ class SceneImporter:
                 elif comp_def and depth == i:
                     gname = group_name(name, mat)
                     if self.reuse_group and gname in bpy.data.collections:
-                        skp_log(f"Group {gname} already defined")
+                        logger.info(f"Group {gname} already defined")
                         self.component_skip[(name, mat)] = comp_def.entities
                         self.group_written[(name, mat)] = bpy.data.collections[gname]
                     else:
                         group = bpy.data.collections.new(name=gname)
-                        skp_log(f"Component {gname} written as group")
+                        logger.info(f"Component {gname} written as group")
                         self.component_def_as_group(
                             comp_def.entities, name, Matrix(), default_material=mat, etype=EntityType.outer, group=group
                         )
@@ -362,9 +325,7 @@ class SceneImporter:
         for group in entities.groups:
             if self.layers_skip and group.layer in self.layers_skip:
                 continue
-            if DEBUG:
-                print(f"     |G {group.name}")
-                print(f"     {Matrix(group.transform)}")
+            logger.debug(f"     |G {group.name}\n     {Matrix(group.transform)}")
             self.analyze_entities(
                 group.entities,
                 "G-" + group.name,
@@ -382,9 +343,7 @@ class SceneImporter:
                 continue
             if (cdef.name, mat) in component_skip:
                 continue
-            if DEBUG:
-                print(f"     |C {cdef.name}")
-                print(f"     {Matrix(instance.transform)}")
+            logger.debug(f"     |C {cdef.name}\n     {Matrix(instance.transform)}")
             self.analyze_entities(
                 cdef.entities,
                 cdef.name,
@@ -490,8 +449,7 @@ class SceneImporter:
                 self.materials[name] = bmat
             else:
                 self.materials[name] = bpy.data.materials[name]
-            if not MIN_LOGS:
-                print(f"     {name}")
+            logger.info(f"     {name}")
 
         # Companion texture detection (Feature 5)
         if hasattr(self, 'prefs') and self.prefs.enhance_materials:
@@ -573,8 +531,7 @@ class SceneImporter:
                 tex_node.image = img
                 tex_node.location = Vector((-600, -300))
                 links.new(tex_node.outputs["Color"], nodes["Principled BSDF"].inputs[target_input])
-            if not MIN_LOGS:
-                print(f"     |_companion: {fn} -> {base}.{target_input}")
+            logger.info(f"     |_companion: {fn} -> {base}.{target_input}")
 
     def write_mesh_data(self, entities=None, name="", default_material="DefaultMaterial"):
 
@@ -681,7 +638,7 @@ class SceneImporter:
                 except AttributeError as _e:
                     uvs_used = False
         else:
-            skp_log(f"WARNING: Object {name} has no material!")
+            logger.warning(f"Object {name} has no material!")
 
         tri_faces = list(zip(*[iter(loops_vert_idx)] * 3))
         tri_face_count = len(tri_faces)
@@ -807,8 +764,7 @@ class SceneImporter:
                 continue
             temp_ob = bpy.data.objects.new(group.name, None)
             gname = "G-" + group_safe_name(temp_ob.name)
-            if DEBUG:
-                print(f"     Grp: {gname} in {ob.name}")
+            logger.debug(f"     Grp: {gname} in {ob.name}")
             self.write_entities(
                 group.entities,
                 gname,
@@ -832,8 +788,7 @@ class SceneImporter:
                 cname = "C-" + cdef.name
             else:
                 cname = instance.name + " (C-" + cdef.name + ")"
-            if DEBUG:
-                print(f"     Cmp: {cname} in {ob.name}")
+            logger.debug(f"     Cmp: {cname} in {ob.name}")
             self.write_entities(
                 cdef.entities,
                 cname,
@@ -867,8 +822,7 @@ class SceneImporter:
             if (name, default_material) in self.component_skip:
                 return
             else:
-                if DEBUG:
-                    skp_log(f"Write instance definition as group {group.name} {default_material}")
+                logger.debug(f"Write instance definition as group {group.name} {default_material}")
                 self.component_skip[(name, default_material)] = True
         if etype == EntityType.component and (name, default_material) in self.component_skip:
             ob = self.instance_object_or_group(name, default_material)
@@ -876,8 +830,8 @@ class SceneImporter:
             self.context.collection.objects.link(ob)
             try:
                 ob.layers = 18 * [False] + [True] + [False]
-            except:
-                pass  # capture AttributeError
+            except Exception:
+                logger.warning("component_def_as_group layer set failed", exc_info=True)
             group.objects.link(ob)
             return
         else:
@@ -891,8 +845,8 @@ class SceneImporter:
             self.context.collection.objects.link(ob)
             try:
                 ob.layers = 18 * [False] + [True] + [False]
-            except:
-                pass  # capture AttributeError
+            except Exception:
+                logger.warning("component_def_as_group layer set failed", exc_info=True)
             group.objects.link(ob)
         for g in entities.groups:
             if self.layers_skip and g.layer in self.layers_skip:
@@ -961,9 +915,7 @@ class SceneImporter:
             ob.parent = dob
             self.context.collection.objects.link(ob)
             self.context.collection.objects.link(dob)
-            skp_log(
-                f"Complex group {name} {default_material} instanced {len(verts)} times, scale -> {scale}, rot -> {rot}"
-            )
+            logger.info(f"Complex group {name} {default_material} instanced {len(verts)} times, scale -> {scale}, rot -> {rot}")
         return
 
     def instance_group_dupli_face(self, name, default_material, component_stats):
@@ -1007,11 +959,11 @@ class SceneImporter:
             ob.parent = dob
             self.context.collection.objects.link(ob)
             self.context.collection.objects.link(dob)
-            skp_log(f"Complex group {name} {default_material} instanced {f_count / 4} times")
+            logger.info(f"Complex group {name} {default_material} instanced {f_count / 4} times")
         return
 
     def write_camera(self, camera, name="Last View"):
-        skp_log(f"Writing camera: {name}")
+        logger.info(f"Writing camera: {name}")
         pos, target, up = camera.GetOrientation()
         bpy.ops.object.add(type="CAMERA", location=pos)
         ob = self.context.object
@@ -1029,10 +981,10 @@ class SceneImporter:
         aspect_ratio = camera.aspect_ratio
         fov = camera.fov
         if aspect_ratio == False:
-            skp_log(f"Cam: '{name}' uses dynamic/screen aspect ratio.")
+            logger.info(f"Cam: '{name}' uses dynamic/screen aspect ratio.")
             aspect_ratio = self.aspect_ratio
         if fov == False:
-            skp_log(f"Cam: '{name}' is in Orthographic Mode.")
+            logger.info(f"Cam: '{name}' is in Orthographic Mode.")
             cam.type = "ORTHO"
         # cam.ortho_scale = 3.0
         else:
@@ -1074,8 +1026,7 @@ class SceneImporter:
         dark = shadow_info.dark
         sun_data.angle = 0.01 + (1.0 - dark / 100.0) * 0.05
 
-        if not MIN_LOGS:
-            skp_log(f"Sun light created: direction={sun_dir}, energy={sun_data.energy:.2f}")
+        logger.info(f"Sun light created: direction={sun_dir}, energy={sun_data.energy:.2f}")
 
     def write_world(self, shadow_info):
         """Set up Blender world environment."""
@@ -1128,8 +1079,7 @@ class SceneImporter:
 
         links.new(bg_node.outputs["Background"], output_shader.inputs["Surface"])
 
-        if not MIN_LOGS:
-            skp_log("World environment set up")
+        logger.info("World environment set up")
 
 
 class SceneExporter:
@@ -1142,7 +1092,7 @@ class SceneExporter:
         return self
 
     def save(self, context, **options):
-        skp_log(f"Finished exporting: {self.filepath}")
+        logger.info(f"Finished exporting: {self.filepath}")
         return {"FINISHED"}
 
 

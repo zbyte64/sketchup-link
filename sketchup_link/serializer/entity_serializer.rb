@@ -23,7 +23,8 @@ module SketchupLink
           { 'type' => entity.class.name, 'persistent_id' => persistent_id(entity) }
         end
       rescue StandardError => e
-        { 'type' => 'Error', 'message' => e.message }
+        SketchupLink.log_error('Failed to serialize entity', e, type: entity.class.name)
+        { 'type' => 'Error', 'message' => e.message, 'persistent_id' => nil }
       end
 
       # ------------------------------------------------------------------
@@ -159,7 +160,7 @@ module SketchupLink
                 tex_hash['image_width']  = tex.image_width
                 tex_hash['image_height'] = tex.image_height
               rescue StandardError => e
-                SketchupLink.log("Failed to serialize texture data: #{e.message}")
+                SketchupLink.log_error('Failed to serialize texture data', e, material: material.name)
               ensure
                 File.delete(tmp_path) if tmp_path && File.exist?(tmp_path)
               end
@@ -180,7 +181,8 @@ module SketchupLink
           'color'      => color_to_hash(layer.color),
           'line_width' => layer.line_width
         }
-      rescue StandardError
+      rescue StandardError => e
+        SketchupLink.log_error('Failed to serialize layer', e, layer: layer.name)
         { 'name' => layer.name, 'visible' => layer.visible? }
       end
 
@@ -193,7 +195,8 @@ module SketchupLink
 
       def self.persistent_id(entity)
         entity.respond_to?(:persistent_id) ? entity.persistent_id : entity.entityID
-      rescue StandardError
+      rescue StandardError => e
+        SketchupLink.log_error('persistent_id failed', e, class: entity.class.name)
         nil
       end
 
@@ -203,7 +206,8 @@ module SketchupLink
 
       def self.color_to_hash(color)
         { 'r' => color.red, 'g' => color.green, 'b' => color.blue, 'a' => color.alpha }
-      rescue StandardError
+      rescue StandardError => e
+        SketchupLink.log_error('Failed to serialize color', e)
         { 'r' => 0, 'g' => 0, 'b' => 0, 'a' => 255 }
       end
     end

@@ -29,12 +29,13 @@ class TestProxyDict:
         d = proxy_dict({"foo": "bar"})
         assert d["foo"] == "bar"
 
-    def test_keyerror_prints_and_returns_none(self, capsys):
+    def test_keyerror_prints_and_returns_none(self, caplog):
+        import logging
+        caplog.set_level(logging.WARNING)
         d = proxy_dict({"foo": "bar"})
         result = d["nonexistent"]
         assert result is None
-        captured = capsys.readouterr()
-        assert "KeyError: nonexistent" in captured.out
+        assert "KeyError: nonexistent" in caplog.text
 
 
 class TestKeepOffset:

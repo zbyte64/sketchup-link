@@ -20,6 +20,7 @@ module SketchupLink
       # Routes a /control/* sub-path to the appropriate handler.
       # Returns [status_code, response_hash] suitable for JSON serialization.
       def handle(sub_path, params)
+        SketchupLink.log(:info, 'Remote control action', sub_path: sub_path, params: params.inspect)
         case sub_path
         when 'camera'           then set_camera(params)
         when 'camera/zoom'      then zoom_camera(params)
@@ -40,6 +41,7 @@ module SketchupLink
           [404, { 'error' => "unknown control path: #{sub_path}" }]
         end
       rescue => e
+        SketchupLink.log_error('Remote control failed', e, sub_path: sub_path)
         [500, { 'error' => e.message, 'detail' => "#{e.class}: #{e.message}" }]
       end
 
@@ -449,6 +451,7 @@ module SketchupLink
         [200, result]
       rescue => e
         model.abort_operation rescue nil
+        SketchupLink.log_error('Transaction failed', e, name: name)
         [500, { 'error' => e.message, 'detail' => "#{e.class}: #{e.message}" }]
       end
     end

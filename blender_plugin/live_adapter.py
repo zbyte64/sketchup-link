@@ -14,9 +14,11 @@ import os
 import socket
 import deal
 import tempfile
+from .log_config import get_logger
 
 # Debug logging flag — enables structured event emission for test observability
 DEBUG = os.environ.get("SKETCHUP_LINK_DEBUG", "").lower() in ("1", "true", "yes")
+_logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Socket path — platform-aware, matches sketchup_link/constants.rb
@@ -102,8 +104,7 @@ def _fetch_model_json_unix(socket_path):
         conn.request("GET", "/model")
         resp = conn.getresponse()
         if DEBUG:
-            import sys
-            print(f"[SKETCHUP_LINK_DEBUG] _fetch_model_json_unix: status={resp.status}", file=sys.stderr)
+            _logger.debug(f"_fetch_model_json_unix: status={resp.status}")
         if resp.status != 200:
             raise RuntimeError(f"sketchup-link returned HTTP {resp.status}")
         return json.loads(resp.read())
@@ -205,8 +206,7 @@ class _JsonTexture:
             try:
                 png_data = fetch_texture_binary(host, port, texture_id)
             except Exception as exc:
-                import sys
-                print(f"[sketchup-link] failed to fetch binary texture '{texture_id}': {exc}", file=sys.stderr)
+                _logger.error(f"failed to fetch binary texture '{texture_id}': {exc}", exc_info=True)
                 return
             with open(path, "wb") as f:
                 f.write(png_data)

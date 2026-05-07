@@ -27,9 +27,11 @@ module SketchupLink
         @server = TCPServer.new('0.0.0.0', @tcp_port)
       end
       @server_thread = Thread.new { server_loop }
+      SketchupLink.log(:info, 'Server started', mode: @mode, socket_path: @socket_path, tcp_port: @tcp_port)
     end
 
     def stop
+      SketchupLink.log(:info, 'Server stopped')
       @server&.close rescue nil
       @server_thread&.kill if @server_thread&.alive?
       @clients.each { |c| c.close rescue nil }
@@ -38,8 +40,8 @@ module SketchupLink
       if @mode == :unix && @socket_path && File.exist?(@socket_path)
         File.delete(@socket_path)
       end
-    rescue StandardError
-      # best-effort cleanup
+    rescue StandardError => e
+      SketchupLink.log_error('Error stopping server', e)
     end
 
     def server_loop
@@ -47,13 +49,15 @@ module SketchupLink
         begin
           client = @server.accept
           Thread.new(client) { |c| handle_client(c) }
-        rescue IOError
-          break  # server socket closed
+          rescue IOError => e
+            SketchupLink.log(:info, 'Server socket closed', error: e.message)
+            break
         end
       end
     end
 
     def handle_client(client)
+      request_id = SecureRandom.uuid
       buffer = +''
       loop do
         begin
@@ -62,15 +66,16 @@ module SketchupLink
           if (idx = buffer.index("\r\n\r\n"))
             header = buffer[0, idx]
             body   = buffer[(idx + 4)..]
-            route(client, header, body)
+            route(client, header, body, request_id: request_id)
             break
           end
-        rescue EOFError, Errno::ECONNRESET, Errno::EPIPE
+        rescue EOFError, Errno::ECONNRESET, Errno::EPIPE => e
+          SketchupLink.log(:info, 'Client read error', request_id: request_id, error: e.message)
           break
         end
       end
     rescue => e
-      # connection error — client will hang up
+      SketchupLink.log(:info, 'Client connection error', request_id: request_id, error: e.message)
     ensure
       client.close rescue nil
     end
@@ -80,8 +85,9 @@ module SketchupLink
       client.close rescue nil
     end
 
-    def route(client, header, _body)
+    def route(client, header, _body, request_id: nil)
       request_line = header.lines.first.to_s.strip
+      start_time = Time.now
 
       case request_line
       when /\AGET \/model(\?|\s|\z)/
@@ -206,7 +212,7 @@ module SketchupLink
                      rescue JSON::ParserError
                        { 'raw' => body }
                      end
-        SketchupLink.log("[API-LOG] #{JSON.generate(log_entry)}")
+        SketchupLink.log(:info, 'API log', log_entry: log_entry)
         respond(client, 200, JSON.generate('ok' => true))
         remove_client(client)
 
@@ -227,7 +233,8 @@ module SketchupLink
       )
       client.write(data)
       client.flush
-    rescue Errno::EPIPE, IOError
+    rescue Errno::EPIPE, IOError => e
+      SketchupLink.log(:info, 'Binary response write error', error: e.message)
       remove_client(client)
     end
     def parse_screenshot_params(request_line)
@@ -253,7 +260,8 @@ module SketchupLink
         "#{body}"
       )
       client.flush
-    rescue Errno::EPIPE, IOError
+    rescue Errno::EPIPE, IOError => e
+      SketchupLink.log(:info, 'Response write error', error: e.message)
       remove_client(client)
   end
 
@@ -306,7 +314,7 @@ module SketchupLink
         tmp.close
         red_mat.texture = tmp_path
       rescue StandardError => e
-        SketchupLink.log("Failed to set test texture: #{e.message}")
+        SketchupLink.log_error('Failed to set test texture', e)
       ensure
         File.delete(tmp_path) if tmp_path && File.exist?(tmp_path)
       end

@@ -65,6 +65,13 @@ module SketchupLink
   end
 end
 
+# Stub logging — no log file in test mode
+module SketchupLink
+  def self.log(level, msg, context = {}); end
+  def self.log_error(msg, exception, context = {}); end
+end
+
+
 # ------------------------------------------------------------------
 # Load real source files
 # ------------------------------------------------------------------
@@ -77,6 +84,7 @@ require 'sketchup_link/event_dispatcher'
 # ------------------------------------------------------------------
 # Mock subscription manager — captures dispatched events
 # ------------------------------------------------------------------
+
 
 class MockSubscriptionManager
   attr_reader :events

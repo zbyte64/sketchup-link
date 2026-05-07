@@ -3,7 +3,9 @@
 from collections import OrderedDict, defaultdict
 from enum import Enum
 import deal
+from .log_config import get_logger
 
+_logger = get_logger(__name__)
 
 default_material_name = "DefaultMaterial"
 su_group_num = 0
@@ -27,7 +29,7 @@ class proxy_dict(dict):
         try:
             return dict.__getitem__(self, key)
         except KeyError as _e:
-            print(f"SU | KeyError: {key}, Skipping...")
+            _logger.warning(f"KeyError: {key}, Skipping...")
 
 
 class keep_offset(defaultdict):

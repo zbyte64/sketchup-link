@@ -6,6 +6,13 @@ from bpy.types import AddonPreferences
 
 from .live_adapter import DEFAULT_SOCKET_PATH
 
+from .log_config import LOG_FILE, set_level as _set_log_level
+
+
+def _on_log_level_changed(self, context):
+    _set_log_level(self.log_level)
+
+
 class SketchupAddonPreferences(AddonPreferences):
     bl_idname = __package__
 
@@ -137,8 +144,35 @@ class SketchupAddonPreferences(AddonPreferences):
         description="Detect and apply companion textures (roughness, normal, etc.)",
         default=True,
     )
+    log_level: EnumProperty(
+        name="Log Level",
+        description="Logging verbosity",
+        items=(
+            ('DEBUG', 'Debug', ''),
+            ('INFO', 'Info', ''),
+            ('WARNING', 'Warning', ''),
+            ('ERROR', 'Error', ''),
+        ),
+        default='INFO',
+        update=_on_log_level_changed,
+    )
+    log_file_path: StringProperty(
+        name="Log File",
+        description="Path to the addon log file",
+        default=LOG_FILE,
+        subtype='FILE_PATH',
+    )
+
     def draw(self, context):
         layout = self.layout
+        layout.label(text="- Logging -")
+        row = layout.row()
+        row.use_property_split = True
+        row.prop(self, "log_level")
+        row = layout.row()
+        row.use_property_split = True
+        row.prop(self, "log_file_path")
+        layout.separator()
         layout.label(text="- Basic Import Options -")
         row = layout.row()
         row.use_property_split = True

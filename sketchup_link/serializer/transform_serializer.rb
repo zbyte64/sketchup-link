@@ -10,6 +10,10 @@ module SketchupLink
       # transpose it. Translation components (indices 12, 13, 14 in row-major)
       # are converted from inches to meters.
       def self.serialize(transformation)
+      unless transformation
+        SketchupLink.log(:warn, 'Nil transformation — returning identity')
+        return [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+      end
         # to_a returns column-major [m0,m1,m2,m3, m4,m5,m6,m7, ...]
         col_major = transformation.to_a
 

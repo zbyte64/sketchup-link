@@ -16,11 +16,13 @@ module SketchupLink
 
     def on_transaction_start
       cancel_debounce
+      SketchupLink.log(:debug, 'Transaction started', depth: @transaction_depth + 1)
       @transaction_depth += 1
     end
 
     def on_transaction_commit(model)
       @transaction_depth -= 1 if @transaction_depth > 0
+      SketchupLink.log(:debug, 'Transaction committed', depth: @transaction_depth)
       if @transaction_depth == 0
         serialize_and_dispatch(EVT_TRANSACTION_COMMIT, model)
       end
@@ -28,30 +30,36 @@ module SketchupLink
 
     def on_transaction_abort(model)
       @transaction_depth -= 1 if @transaction_depth > 0
+      SketchupLink.log(:warn, 'Transaction aborted', depth: @transaction_depth)
       @batch = new_batch
     end
 
     def on_transaction_undo(model)
+      SketchupLink.log(:info, 'Transaction undo')
       @transaction_depth = 0
       @batch = new_batch
       dispatch_simple(EVT_TRANSACTION_UNDO, model_meta(model))
     end
 
     def on_transaction_redo(model)
+      SketchupLink.log(:info, 'Transaction redo')
       @transaction_depth = 0
       @batch = new_batch
       dispatch_simple(EVT_TRANSACTION_REDO, model_meta(model))
     end
 
     def on_model_save(model)
+      SketchupLink.log(:info, 'Model saved')
       dispatch_simple(EVT_MODEL_SAVE, model_meta(model))
     end
 
     def on_model_open(model)
+      SketchupLink.log(:info, 'Model opened/created')
       dispatch_simple(EVT_MODEL_OPEN, model_meta(model))
     end
 
     def on_model_close(model)
+      SketchupLink.log(:info, 'Model closed')
       dispatch_simple(EVT_MODEL_CLOSE, model_meta(model))
     end
 
@@ -111,7 +119,8 @@ module SketchupLink
 
     def persistent_id_of(entity)
       entity.respond_to?(:persistent_id) ? entity.persistent_id : entity.entityID
-    rescue StandardError
+    rescue StandardError => e
+      SketchupLink.log_error('persistent_id_of failed', e)
       nil
     end
 
@@ -141,11 +150,13 @@ module SketchupLink
         'modified' => @batch[:modified],
         'removed'  => @batch[:removed]
       )
+      SketchupLink.log(:info, 'Dispatching event', event: event, added: @batch[:added].size, modified: @batch[:modified].size, removed: @batch[:removed].size)
       @batch = new_batch
       @sub_mgr.dispatch(event, base_envelope(event, payload))
     end
 
     def dispatch_simple(event, data)
+      SketchupLink.log(:info, 'Dispatching simple event', event: event)
       @sub_mgr.dispatch(event, base_envelope(event, data))
     end
 
@@ -161,7 +172,8 @@ module SketchupLink
       return {} unless model
 
       { 'model_guid' => model.guid, 'title' => model.title }
-    rescue StandardError
+    rescue StandardError => e
+      SketchupLink.log_error('model_meta failed', e)
       {}
     end
   end

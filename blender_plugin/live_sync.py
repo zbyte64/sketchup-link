@@ -14,7 +14,9 @@ from bpy.props import FloatProperty, StringProperty
 from bpy.types import Operator, Panel
 from mathutils import Matrix, Vector
 from .live_adapter import DEFAULT_SOCKET_PATH, JsonModel, fetch_model_json, fetch_model_json_tcp, _build_conn_config
+from .log_config import get_logger
 
+_logger = get_logger()
 
 _sync_state: dict = {
     "running": False,
@@ -35,9 +37,10 @@ def _poll_loop(
     """Background daemon thread: polls SketchUp and queues model snapshots."""
     while not stop_event.wait(timeout=interval):
         try:
+            _logger.info(f"Polling SketchUp (interval={interval}s)")
             q.put(fetch_model_json(conn_config=conn_config))
         except Exception:
-            pass  # SketchUp not running — skip silently
+            _logger.warning("poll failed", exc_info=True)
 
 def _sync_timer() -> "float | None":
     """
@@ -60,6 +63,7 @@ def _sync_timer() -> "float | None":
         pass
 
     if latest is not None:
+        _logger.info(f"Importing model snapshot (queue had data)")
         try:
             importer = SceneImporter()
             importer.set_filename("")
@@ -84,9 +88,9 @@ def _sync_timer() -> "float | None":
                 if prefs.follow_viewport:
                     _apply_viewport(importer.skp_model.camera)
             except Exception:
-                pass
+                _logger.debug("viewport follow skipped", exc_info=True)
         except Exception as e:
-            print(f"[sketchup-link] live sync import error: {e}")
+            _logger.error(f"live sync import failed: {e}", exc_info=True)
 
     return state["interval"]
 
