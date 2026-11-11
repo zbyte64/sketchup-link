@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -17,19 +18,23 @@ RUBY_PLUGIN_SOURCE = Path(__file__).parent.parent.parent
 
 
 def find_ruby() -> str:
-    """Return path to ruby executable, or skip if not found."""
+    """Return absolute path to ruby executable, or skip if not found.
+
+    Absolute path matters: the ruby_subprocess fixture runs Ruby with a
+    stripped environment (no PATH), so a bare name cannot be resolved there.
+    """
     for candidate in ("ruby", "ruby3", "ruby3.2", "ruby3.3"):
-        try:
-            result = subprocess.run(
-                [candidate, "--version"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0:
-                return candidate
-        except FileNotFoundError:
+        path = shutil.which(candidate)
+        if path is None:
             continue
+        result = subprocess.run(
+            [path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return path
     pytest.skip("Ruby executable not found — Ruby-side tests skipped")
 
 
