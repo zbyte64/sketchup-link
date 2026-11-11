@@ -14,6 +14,8 @@ module SketchupLink
       @socket_path = nil
       @mode    = nil
       @tcp_port = nil
+      @tick_id = nil
+      @pending = {} # client socket => partial request buffer, until routed or closed
     end
 
     def start(config = {})
@@ -26,17 +28,20 @@ module SketchupLink
       else
         @server = TCPServer.new('0.0.0.0', @tcp_port)
       end
-      @server_thread = Thread.new { server_loop }
+      # SketchUp's embedded Ruby does not run background threads while the main thread
+      # idles in its UI loop, so requests are serviced by a main-thread timer instead.
+      UI.stop_timer(@tick_id) if @tick_id
+      @tick_id = UI.start_timer(TIMER_INTERVAL, true) { tick }
       SketchupLink.log(:info, 'Server started', mode: @mode, socket_path: @socket_path, tcp_port: @tcp_port)
     end
 
     def stop
       SketchupLink.log(:info, 'Server stopped')
+      UI.stop_timer(@tick_id) if @tick_id
+      @tick_id = nil
       @server&.close rescue nil
-      @server_thread&.kill if @server_thread&.alive?
-      @clients.each { |c| c.close rescue nil }
-      @clients.clear
-      @buffers.clear
+      @pending.each_key { |client| client.close rescue nil }
+      @pending.clear
       if @mode == :unix && @socket_path && File.exist?(@socket_path)
         File.delete(@socket_path)
       end
@@ -44,39 +49,50 @@ module SketchupLink
       SketchupLink.log_error('Error stopping server', e)
     end
 
-    def server_loop
+    # Runs on the SketchUp main thread every TIMER_INTERVAL seconds.
+    def tick
+      accept_pending
+      service_pending
+    rescue StandardError => e
+      SketchupLink.log_error('Server tick failed', e)
+    end
+
+    def accept_pending
       loop do
-        begin
-          client = @server.accept
-          Thread.new(client) { |c| handle_client(c) }
-          rescue IOError => e
-            SketchupLink.log(:info, 'Server socket closed', error: e.message)
-            break
-        end
+        client = @server.accept_nonblock
+        @pending[client] = +''
+      rescue IO::WaitReadable
+        break
       end
     end
 
-    def handle_client(client)
-      request_id = SecureRandom.uuid
-      buffer = +''
-      loop do
-        begin
-          data = client.readpartial(4096)
-          buffer << data
-          if (idx = buffer.index("\r\n\r\n"))
-            header = buffer[0, idx]
-            body   = buffer[(idx + 4)..]
-            route(client, header, body, request_id: request_id)
-            break
-          end
-        rescue EOFError, Errno::ECONNRESET, Errno::EPIPE => e
-          SketchupLink.log(:info, 'Client read error', request_id: request_id, error: e.message)
-          break
-        end
-      end
-    rescue => e
-      SketchupLink.log(:info, 'Client connection error', request_id: request_id, error: e.message)
-    ensure
+    def service_pending
+      readable, = IO.select(@pending.keys, nil, nil, 0)
+      return unless readable
+
+      readable.each { |client| service_client(client) }
+    end
+
+    def service_client(client)
+      buffer = @pending[client]
+      buffer << client.read_nonblock(4096)
+      idx = buffer.index("\r\n\r\n")
+      return unless idx
+
+      @pending.delete(client)
+      result = route(client, buffer[0, idx], buffer[(idx + 4)..], request_id: SecureRandom.uuid)
+      return if result == :subscribed
+
+      client.close rescue nil
+    rescue IO::WaitReadable
+      nil
+    rescue EOFError, Errno::ECONNRESET, Errno::EPIPE, IOError => e
+      SketchupLink.log(:info, 'Client read error', error: e.message)
+      @pending.delete(client)
+      client.close rescue nil
+    rescue StandardError => e
+      SketchupLink.log_error('Client request failed', e)
+      @pending.delete(client)
       client.close rescue nil
     end
 
@@ -120,7 +136,8 @@ module SketchupLink
         rescue Errno::EPIPE, IOError
           remove_client(client)
         end
-        # client stays in @clients — events streamed by subscription_manager
+        :subscribed
+        # subscriber socket stays open: subscription_manager streams events to it from the main thread
 
       when /\ADELETE \/unsubscribe\/([^\s\/]+)/
         sub_id = Regexp.last_match(1)
