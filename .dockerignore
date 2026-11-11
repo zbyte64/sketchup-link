@@ -1,0 +1,18 @@
+# Keep the Blender build context small: the root is the build context
+# (integration/compose.yml uses context: ..), and the VM disk alone is 64 GB.
+.git
+.venv
+**/__pycache__
+**/*.py[oc]
+**/*.egg-info
+dist
+*.rbz
+integration/vm-storage*
+integration/shared
+/shared
+integration/screenshots
+integration/scripts/diagnostics
+integration/*.png
+integration/*.ppm
+tests/bdd/screenshots
+tests/fuzz/artifacts
