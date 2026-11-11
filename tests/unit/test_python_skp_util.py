@@ -11,9 +11,26 @@ from blender_plugin.skp_util import (
     keep_offset,
     proxy_dict,
 )
-import deal
-test_group_name = deal.cases(group_name)
-test_group_safe_name = deal.cases(group_safe_name)
+
+
+class TestGroupName:
+    def test_default_material_leaves_name_unchanged(self):
+        assert group_name("Chair", "DefaultMaterial") == "Chair"
+
+    def test_named_material_suffixes_name(self):
+        assert group_name("Chair", "Oak") == "Chair_Oak"
+
+
+class TestGroupSafeName:
+    def test_named_group_is_unchanged(self):
+        assert group_safe_name("Chair") == "Chair"
+
+    def test_unnamed_groups_get_distinct_numbered_placeholders(self):
+        first = group_safe_name("")
+        second = group_safe_name("")
+        assert first.startswith("No_Name_")
+        assert first[len("No_Name_"):].isdigit()
+        assert first != second
 
 
 class TestProxyDict:

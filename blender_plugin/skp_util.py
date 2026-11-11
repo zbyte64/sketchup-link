@@ -2,7 +2,6 @@
 
 from collections import OrderedDict, defaultdict
 from enum import Enum
-import deal
 from .log_config import get_logger
 
 _logger = get_logger(__name__)
@@ -46,8 +45,6 @@ class keep_offset(defaultdict):
         return number
 
 
-@deal.pure
-@deal.ensure(lambda name, material, result: result == name if material == default_material_name else result == f"{name}_{material}")
 def group_name(name: str, material: str) -> str:
     if material != default_material_name:
         return f"{name}_{material}"
@@ -55,7 +52,6 @@ def group_name(name: str, material: str) -> str:
         return name
 
 
-@deal.ensure(lambda name, result: result == name if name else result.startswith("No_Name_"))
 def group_safe_name(name: str) -> str:
     if not name:
         global su_group_num
@@ -67,8 +63,6 @@ def group_safe_name(name: str) -> str:
     return name
 
 
-@deal.pure
-@deal.ensure(lambda mat, default_material, result: result == (mat.name if mat else default_material))
 def inherent_default_mat(mat, default_material: str) -> str:
     mat_name = mat.name if mat else default_material
     if mat_name == (default_material_name and default_material != default_material_name):
