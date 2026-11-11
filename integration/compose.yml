@@ -4,11 +4,10 @@ services:
     container_name: windows
     environment:
       VERSION: "11"
-      GPU: "Y"
+      GPU: "N"
       USER_PORTS: "3389,9876"
       SKETCHUP_INSTALLER: ${SKETCHUP_INSTALLER:-./installers/SketchUp2025.exe}
     devices:
-      - /dev/dri
       - /dev/kvm
       - /dev/net/tun
     cap_add:
@@ -16,8 +15,8 @@ services:
       - SYS_ADMIN
     ports:
       - 8006:8006
-      - 3389:3389/tcp
-      - 3389:3389/udp
+      - 3390:3389/tcp # host 3389 is taken by gnome-remote-desktop
+      - 3390:3389/udp
       - 6123:6123 # VS Code debug port
       - 9876:9876 # TCP port for sketchup-link live sync
     volumes:
