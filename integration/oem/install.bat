@@ -1,16 +1,16 @@
 @echo off
-REM SketchUp Link VM Setup — OEM script for dockurr/windows
+REM SketchUp Link VM Setup - OEM script for dockurr/windows
 REM Runs during the last step of automatic Windows installation.
 REM Deploys a first-logon startup script to install SketchUp, apply crack,
 REM and deploy the SketchUp Link plugin.
 REM See: https://github.com/dockur/windows#how-do-i-run-a-script-after-installation
 
 REM *******************************************************************
-REM Phase 0: Bootstrap — detect and skip already-deployed
+REM Phase 0: Bootstrap - detect and skip already-deployed
 REM *******************************************************************
 set DEPLOY_MARKER=C:\OEM\.install_done
 if exist "%DEPLOY_MARKER%" (
-    echo install.bat: Already deployed (marker exists). Exiting.
+    echo install.bat: Already deployed - marker exists. Exiting.
     goto :EOF
 )
 
@@ -20,7 +20,7 @@ REM *******************************************************************
 echo === install.bat: Disabling Windows Firewall ===
 netsh advfirewall set allprofiles state off
 if %ERRORLEVEL% neq 0 (
-    echo WARNING: Failed to disable firewall (exit code %ERRORLEVEL%)
+    echo WARNING: Failed to disable firewall - exit code %ERRORLEVEL%
 ) else (
     echo OK: Firewall disabled
 )
@@ -29,7 +29,7 @@ REM Add explicit firewall rule for SketchUp Link TCP port
 echo Adding firewall rule for TCP port 9876...
 netsh advfirewall firewall add rule name="SketchUp Link 9876" dir=in action=allow protocol=TCP localport=9876
 if %ERRORLEVEL% neq 0 (
-    echo WARNING: Failed to add firewall rule (exit code %ERRORLEVEL% — may already exist)
+    echo WARNING: Failed to add firewall rule - exit code %ERRORLEVEL%, may already exist
 ) else (
     echo OK: Firewall rule added
 )
