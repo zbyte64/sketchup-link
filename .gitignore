@@ -17,4 +17,10 @@ tests/fuzz/artifacts/
 integration/scripts/diagnostics/
 integration/vm-storage/
 integration/shared/installers/
+integration/shared/sketchup-link-extracted/
+integration/vm-storage.bak-*/
+integration/screenshots/
+integration/screendump.ppm
+integration/vm_screenshot*.png
+/shared/
 dist/*.zip
