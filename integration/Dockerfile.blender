@@ -24,9 +24,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsm6 \
     && rm -rf /var/lib/apt/lists/*
 
-# Download and extract Blender 4.2 LTS
-RUN curl -fsSL "https://download.blender.org/release/Blender4.2/blender-4.2.0-linux-x64.tar.xz" \
+# Download, verify, and extract Blender 4.2.0 LTS. download.blender.org sits
+# behind a bot challenge (403 to curl), so use the OCF mirror; the SHA-256 is
+# the official one from blender-4.2.0.sha256 and matches the Debian/Aliyun mirrors.
+RUN curl -fsSL "https://mirrors.ocf.berkeley.edu/blender/release/Blender4.2/blender-4.2.0-linux-x64.tar.xz" \
     -o /tmp/blender.tar.xz \
+    && echo "4f4fd7646af01f6fee9d420408318381a6e52571268eb7cf9cd5033bd9e7a359  /tmp/blender.tar.xz" | sha256sum -c - \
     && tar -xf /tmp/blender.tar.xz -C /opt \
     && rm /tmp/blender.tar.xz
 
@@ -36,8 +39,8 @@ RUN ln -s /opt/blender-4.2.0-linux-x64/blender /usr/local/bin/blender
 # Ensure Blender's bundled pip and install test deps
 RUN /opt/blender-4.2.0-linux-x64/4.2/python/bin/python3.11 -m ensurepip && \
     /opt/blender-4.2.0-linux-x64/4.2/python/bin/python3.11 -m pip install --no-cache-dir \
-        pytest>=9.0.2 \
-        pytest-bdd>=8.0.0
+        "pytest>=9.0.2" \
+        "pytest-bdd>=8.0.0"
 
 # Verify Blender works
 RUN blender --version
