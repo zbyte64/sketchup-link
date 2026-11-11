@@ -264,13 +264,13 @@ def main():
     try:
         if "blender_plugin" not in bpy.context.preferences.addons:
             bpy.ops.preferences.addon_enable(module="blender_plugin")
-    except Exception:
-        pass  # May fail headless; SceneImporter handles missing prefs
-
-    from blender_plugin.live_adapter import JsonModel  # noqa: E402
-    from blender_plugin.scene_importer import SceneImporter  # noqa: E402
+    except Exception as e:
+        print(f"warning: addon_enable failed, continuing headless: {e}", file=sys.stderr)
 
     try:
+        from blender_plugin.live_adapter import JsonModel  # noqa: E402
+        from blender_plugin.scene_importer import SceneImporter  # noqa: E402
+
         # Wrap and import
         model = JsonModel(model_dict)
         importer = SceneImporter()

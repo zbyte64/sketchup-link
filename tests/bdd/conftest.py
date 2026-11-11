@@ -827,7 +827,7 @@ def then_screenshot_captured(request, screenshot_dir, no_screenshots):
     container_model_path = '/screenshots/' + os.path.basename(screenshot_dir) + '/model.json'
     container_output_path = '/screenshots/' + os.path.basename(screenshot_dir) + '/render.png'
     cmd = _blender_docker_cmd() + [
-        'blender', '--background',
+        'blender', '--background', '--python-exit-code', '1',
         '--python', '/plugin/tests/bdd/render_screenshot.py',
         '--',
         container_model_path,
@@ -887,7 +887,7 @@ def then_wireframe_screenshot_captured(request, screenshot_dir, no_screenshots):
     container_model_path = '/screenshots/' + os.path.basename(screenshot_dir) + '/model.json'
     container_output_path = '/screenshots/' + os.path.basename(screenshot_dir) + '/render_wireframe.png'
     cmd = _blender_docker_cmd() + [
-        'blender', '--background',
+        'blender', '--background', '--python-exit-code', '1',
         '--python', '/plugin/tests/bdd/render_wireframe_screenshot.py',
         '--',
         container_model_path,
