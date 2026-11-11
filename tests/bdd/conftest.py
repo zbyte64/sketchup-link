@@ -19,7 +19,6 @@ import tempfile
 import re
 
 import threading
-import time
 import pytest
 from pytest_bdd import given, when, then
 
@@ -145,14 +144,16 @@ def _start_error_server(path, status, body):
     Creates a Unix socket at *path*, listens for one connection, sends the
     given HTTP status line and JSON body, then closes and unlinks the socket.
 
-    Blocks the calling thread until the socket file exists to ensure the
-    server is ready before the test proceeds.
+    Blocks the calling thread until the server is listening (signalled after
+    ``listen()``), not merely until the socket file exists: the file appears at
+    ``bind()``, and a connect in that window gets ECONNREFUSED.
     """
     def _serve():
         try:
             srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             srv.bind(path)
             srv.listen(1)
+            ready.set()
             conn, _ = srv.accept()
             reason = {200: "OK", 500: "Internal Server Error", 400: "Bad Request",
                       404: "Not Found"}.get(status, "Unknown")
@@ -181,15 +182,12 @@ def _start_error_server(path, status, body):
     except FileNotFoundError:
         pass
 
+    ready = threading.Event()
     t = threading.Thread(target=_serve, daemon=True)
     t.start()
 
-    # Wait for the socket to appear (with timeout) to avoid races
-    deadline = time.monotonic() + 5.0
-    while not os.path.exists(path):
-        if time.monotonic() > deadline:
-            raise RuntimeError(f"Error server did not create socket at {path} within 5s")
-        time.sleep(0.01)
+    if not ready.wait(timeout=5.0):
+        raise RuntimeError(f"Error server did not start listening at {path} within 5s")
 
 # ---------------------------------------------------------------------------
 # CLI option: --no-screenshots for CI-safe mode
