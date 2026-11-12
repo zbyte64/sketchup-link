@@ -97,6 +97,7 @@ def test_model_keys():
         "layers",
         "shadow_info",
         "component_definitions",
+        "scenes",
     }
 
 

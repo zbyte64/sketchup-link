@@ -212,6 +212,8 @@ module Builders
     m.define_singleton_method(:materials)   { (data['materials'] || []).map { |d| Builders.material(d) } }
     m.define_singleton_method(:layers)      { (data['layers'] || []).map { |d| Builders.layer(d) } }
     m.define_singleton_method(:definitions) { (data['definitions'] || []).map { |d| Builders.definition(d) } }
+    # Sketchup::Model#pages (saved scenes). Empty unless the test supplies pages.
+    m.define_singleton_method(:pages)       { [] }
     m.define_singleton_method(:active_view) { Builders.view(data) }
     m
   end
