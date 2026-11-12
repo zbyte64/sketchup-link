@@ -19,6 +19,7 @@ services:
       - 3390:3389/udp
       - 6123:6123 # VS Code debug port
       - 9876:9876 # TCP port for sketchup-link live sync
+      - 2222:22 # guest OpenSSH (host 22 is the host's own sshd)
     volumes:
       - ./vm-storage:/storage
       - ./shared:/shared
