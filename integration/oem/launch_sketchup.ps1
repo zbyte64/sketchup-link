@@ -295,7 +295,17 @@ function Wait-For-Plugin {
                 return $true
             }
         } catch {
-            # Not responding yet - that's expected during startup
+            # Not responding on TCP yet - expected during startup and in the default
+            # Unix-socket mode (DEFAULT_USE_TCP=false), which has no TCP listener.
+        }
+
+        # Unix-socket mode: a socket file alone can outlive a crashed process, so
+        # require the socket file AND a running SketchUp process before reporting ready.
+        $socketFile = "$env:TEMP\sketchup-link.sock"
+        if ((Test-Path $socketFile) -and (Get-Process -Name SketchUp -ErrorAction SilentlyContinue)) {
+            Log "Plugin socket present and SketchUp running after ${elapsed}s (Unix-socket mode)"
+            Write-Status -status "ready" -detail "Plugin ready on Unix socket after ${elapsed}s"
+            return $true
         }
 
         if ($elapsed -ge $pluginPollMax) {
