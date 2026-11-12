@@ -1244,10 +1244,16 @@ def when_stress_mutation_sequence(request):
 # ---------------------------------------------------------------------------
 
 _MCP_LOCAL_PORT = int(os.environ.get('MCP_LOCAL_PORT', '9878'))
-_PURGE_MATERIALS = (
+# Full purge, so every test starts from identical state. model/clear removes geometry only,
+# so this erases every entity and purges component definitions and materials. Erasing
+# instances first makes every definition unused, which is what lets purge_unused clear them
+# all; a partial purge left names like Chair#1 that varied between runs.
+_PURGE_ALL = (
     "m = Sketchup.active_model; "
+    "m.entities.to_a.each { |e| e.erase! rescue nil }; "
+    "m.definitions.to_a.each { |d| m.definitions.purge_unused rescue nil }; "
     "m.materials.to_a.each { |x| m.materials.remove(x) rescue nil }; "
-    "m.materials.count"
+    "[m.materials.count, m.definitions.count, m.entities.count].join(',')"
 )
 
 
@@ -1339,7 +1345,7 @@ def _reset_live_model(request):
     assert status == 200, f'model reset: clear returned HTTP {status}'
     # The MCP tunnel is a hard requirement for the e2e suite: without it materials
     # accumulate across tests (Red1, Red2 ...) and colour checks become meaningless.
-    purged = _mcp_eval(_PURGE_MATERIALS)
+    purged = _mcp_eval(_PURGE_ALL)
     if purged is None:
         pytest.fail(
             'E2E requires the MCP tunnel on 127.0.0.1:%d. Start it with '
@@ -1347,8 +1353,10 @@ def _reset_live_model(request):
             % _MCP_LOCAL_PORT)
     result = purged.get('result', {})
     text = (result.get('content') or [{}])[0].get('text')
-    assert not result.get('isError') and text == '0', (
-        f'model reset: material purge incomplete (remaining={text!r}, error={purged.get("error")!r})')
+    # The purge reports "materials,definitions,entities" left after the purge: all must be 0.
+    assert not result.get('isError') and text == '0,0,0', (
+        f'model reset incomplete: materials,definitions,entities left = {text!r} '
+        f'(error={purged.get("error")!r})')
     status = _post_json('/test_model', None)
     assert status == 200, f'model reset: test_model returned HTTP {status}'
     yield
