@@ -12,7 +12,7 @@ index bce8fef..9c8f657 100644
              logger.error("Failed to connect to Sketchup")
              _sketchup_connection = None
 diff --git a/su_mcp/su_mcp/main.rb b/su_mcp/su_mcp/main.rb
-index 90117b4..d549802 100644
+index 90117b4..4167b1f 100644
 --- a/su_mcp/su_mcp/main.rb
 +++ b/su_mcp/su_mcp/main.rb
 @@ -9,7 +9,7 @@ SKETCHUP_CONSOLE.show rescue nil
@@ -24,3 +24,11 @@ index 90117b4..d549802 100644
        @server = nil
        @running = false
        @timer_id = nil
+@@ -1850,6 +1850,7 @@ module SU_MCP
+ 
+   unless file_loaded?(__FILE__)
+     @server = Server.new
++    @server.start  # auto-start the MCP server at extension load (test VM)
+     
+     menu = UI.menu("Plugins").add_submenu("MCP Server")
+     menu.add_item("Start Server") { @server.start }
