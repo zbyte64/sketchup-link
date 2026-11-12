@@ -102,6 +102,37 @@ def _default_prefs():
     )
 
 
+# Custom-property key marking every object/collection the importer creates.
+IMPORT_MARKER = "skp_link_import"
+
+
+def remove_previous_import():
+    """Delete objects and collections previously created by the importer.
+
+    Only datablocks carrying IMPORT_MARKER are removed; untagged user objects
+    are left alone. Mesh data orphaned by the removal is purged as well.
+    """
+    stale_objects = [o for o in bpy.data.objects if o.get(IMPORT_MARKER)]
+    stale_meshes = {o.data for o in stale_objects if o.type == "MESH" and o.data is not None}
+    for ob in stale_objects:
+        bpy.data.objects.remove(ob, do_unlink=True)
+    for coll in [c for c in bpy.data.collections if c.get(IMPORT_MARKER)]:
+        bpy.data.collections.remove(coll)
+    for me in stale_meshes:
+        if me.users == 0:
+            bpy.data.meshes.remove(me)
+
+
+def tag_new_datablocks(before_objects, before_collections):
+    """Mark objects and collections created since the snapshot with IMPORT_MARKER."""
+    for ob in bpy.data.objects:
+        if ob.name not in before_objects:
+            ob[IMPORT_MARKER] = True
+    for coll in bpy.data.collections:
+        if coll.name not in before_collections:
+            coll[IMPORT_MARKER] = True
+
+
 def create_nested_collection(coll_name):
     context = bpy.context
     main_coll_name = "SKP Imported Data"  # data imported into this collection
@@ -150,7 +181,15 @@ class SceneImporter:
         return self  # allow chaining
 
     def load(self, context, **options):
-        """Load a SketchUp file"""
+        """Load a SketchUp file.
+
+        Objects and collections created by a previous import (tagged with
+        IMPORT_MARKER) are removed first, so entities deleted in SketchUp do not
+        linger in Blender. Untagged user data is never touched.
+        """
+        remove_previous_import()
+        before_objects = set(bpy.data.objects.keys())
+        before_collections = set(bpy.data.collections.keys())
 
         # Blender settings
         self.context = context
@@ -194,6 +233,7 @@ class SceneImporter:
                 self.skp_model = sketchup.Model.from_file(self.filepath)  # type: ignore[union-attr]
             except Exception as e:
                 logger.warning(f"Error reading input file: {self.filepath}: {e}")
+                tag_new_datablocks(before_objects, before_collections)
                 return {"FINISHED"}
 
         # Start stopwatch for camera import
@@ -285,6 +325,7 @@ class SceneImporter:
                 if l.name == "SKP Components":
                     l.exclude = True  # hide component collection in view layer
         if options["dedub_only"]:
+            tag_new_datablocks(before_objects, before_collections)
             return {"FINISHED"}
 
         # self.component_stats = defaultdict(list)
@@ -314,6 +355,7 @@ class SceneImporter:
         # release model and terminate api
         # self.skp_model.close()
 
+        tag_new_datablocks(before_objects, before_collections)
         return {"FINISHED"}
 
     #
