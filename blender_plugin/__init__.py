@@ -12,6 +12,7 @@ from .live_sync import (
     SKETCHUP_PT_RenderSettings,
     SketchUpStartLiveSync,
     SketchUpStopLiveSync,
+    SketchUpClearSyncWarnings,
     SketchUpQuickRender,
     SketchUpQuickRenderViewport,
 )
@@ -32,6 +33,7 @@ def register():
     bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
     bpy.utils.register_class(SketchUpStartLiveSync)
     bpy.utils.register_class(SketchUpStopLiveSync)
+    bpy.utils.register_class(SketchUpClearSyncWarnings)
     bpy.utils.register_class(SKETCHUP_PT_LiveSync)
     bpy.utils.register_class(SketchUpQuickRender)
     bpy.utils.register_class(SketchUpQuickRenderViewport)
@@ -59,5 +61,6 @@ def unregister():
     bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
     bpy.utils.unregister_class(SketchUpStartLiveSync)
     bpy.utils.unregister_class(SketchUpStopLiveSync)
+    bpy.utils.unregister_class(SketchUpClearSyncWarnings)
     bpy.utils.unregister_class(SKETCHUP_PT_LiveSync)
     bpy.utils.unregister_class(SketchupAddonPreferences)

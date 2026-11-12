@@ -84,6 +84,10 @@ def _sync_timer() -> "float | None":
     if latest is None:
         return _next_delay(state)
 
+    # Push Blender edits BEFORE importing: the import rebuilds tagged objects, so an edit
+    # made since the last sync would otherwise be overwritten before it is sent.
+    _push_pending_edits()
+
     _logger.info(f"Importing model snapshot (queue had data)")
     try:
         importer = SceneImporter()
@@ -119,6 +123,79 @@ def _sync_timer() -> "float | None":
         )
 
     return _next_delay(state)
+
+
+def _push_pending_edits():
+    """Capture Blender edits, push them under the SketchUp-wins policy, record warnings.
+
+    Failures are logged and never raised: a push problem must not stop the live import.
+    """
+    try:
+        from . import edit_capture, sync_push
+        from .live_adapter import fetch_model_json_tcp
+        from .sync_push import SketchUpState
+
+        edits = edit_capture.drain_pending()
+        if not edits:
+            return
+
+        snapshot = {}
+
+        def read_current(pid):
+            nonlocal snapshot
+            snapshot = fetch_model_json_tcp(_sync_state["conn_config"]["host"],
+                                            _sync_state["conn_config"]["port"], False)
+            for e in snapshot.get("entities", []):
+                if e.get("persistent_id") == pid:
+                    return SketchUpState(transform=tuple(e["transformation"]), color=None)
+            return SketchUpState()
+
+        for edit in edits:
+            baseline = edit_capture.tracker()._synced.get(edit.persistent_id)
+            if baseline is None:
+                continue
+            result = sync_push.push(
+                edit, baseline,
+                read_current=read_current,
+                send_transform=_post_transform,
+                send_material=_post_material,
+                material_name_for=lambda pid: None,
+            )
+            sync_push.record_result(result)
+            if result.error:
+                _logger.warning(f"push failed: {result.error}")
+    except Exception:
+        _logger.warning("edit push skipped", exc_info=True)
+
+
+def _post_transform(persistent_id, transformation):
+    """POST a transform to /control/geometry/transform on the configured host."""
+    import json as _json
+    import urllib.request as _ur
+    cc = _sync_state["conn_config"]
+    body = _json.dumps({"persistent_id": persistent_id, "transformation": list(transformation)}).encode()
+    req = _ur.Request(f"http://{cc['host']}:{cc['port']}/control/geometry/transform", data=body,
+                      method="POST", headers={"Content-Type": "application/json"})
+    try:
+        with _ur.urlopen(req, timeout=10) as r:
+            return r.status
+    except Exception:
+        return 0
+
+
+def _post_material(name, color):
+    """POST a material colour to /control/material on the configured host."""
+    import json as _json
+    import urllib.request as _ur
+    cc = _sync_state["conn_config"]
+    body = _json.dumps({"name": name, "color": {"r": color[0], "g": color[1], "b": color[2]}}).encode()
+    req = _ur.Request(f"http://{cc['host']}:{cc['port']}/control/material", data=body,
+                      method="POST", headers={"Content-Type": "application/json"})
+    try:
+        with _ur.urlopen(req, timeout=10) as r:
+            return r.status
+    except Exception:
+        return 0
 
 
 def _next_delay(state: dict) -> float:
@@ -222,6 +299,18 @@ class SketchUpStopLiveSync(Operator):
         return {"FINISHED"}
 
 
+class SketchUpClearSyncWarnings(Operator):
+    """Dismiss the sync warnings shown in the panel"""
+
+    bl_idname = "import_scene.skp_clear_sync_warnings"
+    bl_label = "Dismiss Sync Warnings"
+
+    def execute(self, context):
+        from . import sync_push as _sp
+        _sp.clear_warnings()
+        return {"FINISHED"}
+
+
 class SKETCHUP_PT_LiveSync(Panel):
     bl_label = "SketchUp Live Sync"
     bl_space_type = "VIEW_3D"
@@ -247,6 +336,15 @@ class SKETCHUP_PT_LiveSync(Panel):
             op = layout.operator("import_scene.skp_start_live_sync", icon="PLAY")
             op.interval = 2.0
  
+        from . import sync_push as _sp
+        warn = _sp.warnings()
+        if warn:
+            layout.separator()
+            layout.label(text=f"Sync warnings ({len(warn)}): SketchUp wins", icon="ERROR")
+            for w in warn[-3:]:
+                layout.label(text=w[:90])
+            layout.operator("import_scene.skp_clear_sync_warnings", icon="X")
+
         layout.separator()
         layout.label(text="- Quick Render -")
         row = layout.row(align=True)

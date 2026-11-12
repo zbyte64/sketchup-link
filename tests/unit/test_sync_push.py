@@ -53,7 +53,7 @@ def test_failed_control_call_is_reported_not_swallowed():
         material_name_for=lambda pid: None,
     )
     assert r.pushed == []
-    assert "transform push failed: HTTP 500" in r.error
+    assert r.error is not None and "transform push failed: HTTP 500" in r.error
 
 
 def test_warning_names_the_object_and_field():
@@ -67,3 +67,33 @@ def test_no_warning_when_nothing_was_overwritten():
     e = Edit(42, transform=MOVED, fields={"transform"})
     r = decide(e, BASE, SketchUpState(transform=IDENT, color=RED))
     assert warning_text(r) is None
+
+
+def test_record_result_keeps_overwritten_edit_as_a_warning():
+    from blender_plugin import sync_push
+    sync_push.clear_warnings()
+    e = Edit(42, transform=MOVED, fields={"transform"})
+    r = decide(e, BASE, SketchUpState(transform=(1, 0, 0, 9.0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1), color=RED))
+    sync_push.record_result(r)
+    assert len(sync_push.warnings()) == 1
+    assert "42" in sync_push.warnings()[0]
+    sync_push.clear_warnings()
+
+
+def test_clean_push_adds_no_warning():
+    from blender_plugin import sync_push
+    sync_push.clear_warnings()
+    e = Edit(42, transform=MOVED, fields={"transform"})
+    sync_push.record_result(decide(e, BASE, SketchUpState(transform=IDENT, color=RED)))
+    assert sync_push.warnings() == []
+
+
+def test_warnings_are_capped_at_the_most_recent():
+    from blender_plugin import sync_push
+    sync_push.clear_warnings()
+    for i in range(sync_push.MAX_WARNINGS + 5):
+        sync_push.add_warning(f"w{i}")
+    kept = sync_push.warnings()
+    assert len(kept) == sync_push.MAX_WARNINGS
+    assert kept[-1] == f"w{sync_push.MAX_WARNINGS + 4}"
+    sync_push.clear_warnings()

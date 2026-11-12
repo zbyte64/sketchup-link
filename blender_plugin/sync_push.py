@@ -102,3 +102,33 @@ def warning_text(result: PushResult) -> str | None:
     what = " and ".join(result.overwritten)
     return (f"SketchUp changed object {result.persistent_id} since your last sync; "
             f"your Blender {what} edit was discarded (SketchUp wins).")
+
+
+# ---------------------------------------------------------------------------
+# User-visible warnings. A dropped edit must not vanish silently: it is kept here
+# until the user dismisses it, and shown in the Blender panel.
+# ---------------------------------------------------------------------------
+
+_warnings: list[str] = []
+MAX_WARNINGS = 20
+
+
+def add_warning(text: str) -> None:
+    """Record a warning, keeping the most recent MAX_WARNINGS."""
+    _warnings.append(text)
+    del _warnings[:-MAX_WARNINGS]
+
+
+def warnings() -> list[str]:
+    return list(_warnings)
+
+
+def clear_warnings() -> None:
+    _warnings.clear()
+
+
+def record_result(result: PushResult) -> None:
+    """Turn a push result into a user warning when SketchUp overwrote an edit."""
+    text = warning_text(result)
+    if text is not None:
+        add_warning(text)
