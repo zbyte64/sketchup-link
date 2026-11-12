@@ -1,7 +1,6 @@
 # Blender → SketchUp sync: design (milestone 1)
 
-Status: **proposal**. No code written. Decisions marked **[DECIDE]** need an owner's call
-before implementation.
+Status: **accepted** for milestone 1. Decisions are recorded below; code follows this doc.
 
 ## Scope of milestone 1
 
@@ -55,7 +54,7 @@ and report failures in the Blender UI.
 
 If SketchUp and Blender both change an entity between polls:
 
-- **A. SketchUp wins, with a visible warning (recommended).** The Blender edit is
+- **A. SketchUp wins, with a visible warning. [DECIDED]** The Blender edit is
   discarded, as today, but the user is told which objects were overwritten. Smallest
   change; keeps SketchUp as source of truth.
 - **B. Last write wins.** Simple, but silently loses whichever side wrote first.
@@ -80,10 +79,8 @@ provides this.
 - **Component instances.** An instance's transform is relative to its definition. Pushing
   a transform on an instance must target the instance, not the definition. Needs a test
   with the factory `Chair` instance before shipping.
-- **Undo in Blender.** Blender's undo can revert a tagged object's transform without a
-  user "edit". The sync must not push undo-driven changes. **[DECIDE]** whether undo in
-  Blender should be pushed (it is a real edit to the user) or ignored (it is a local
-  view state).
+- **Undo in Blender. [DECIDED: pushed.]** Blender undo that changes a tagged object is a
+  real edit to the model, so it is pushed like any other change.
 
 ## Test plan (milestone 1)
 
@@ -95,8 +92,9 @@ provides this.
   is raised.
 - Regression: the existing `live_import_check` and `live_delete_check` stay green.
 
-## Open decisions
+## Decisions
 
-1. Conflict policy: confirm **A** (SketchUp wins, with a warning).
-2. Blender undo: push it, or ignore it?
-3. Scope: is transform + material enough for the first milestone, or are adds required?
+1. Conflict policy: **A**, SketchUp wins with a visible warning.
+2. Blender undo: **pushed** to SketchUp.
+3. Scope: milestone 1 is **transform and material**. Full bidirectional geometry editing
+   (adds, deletes, mesh changes) is the following milestone.
