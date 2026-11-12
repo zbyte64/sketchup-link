@@ -489,6 +489,21 @@ class JsonDefinitionRef:
 # Camera (safe defaults — live import skips camera by default)
 # ---------------------------------------------------------------------------
 
+class JsonScene:
+    """One saved scene from the snapshot: a name and the camera it stores."""
+
+    def __init__(self, d):
+        self._d = d
+
+    @property
+    def name(self):
+        return self._d.get("name", "")
+
+    @property
+    def camera(self):
+        return JsonCamera(self._d.get("camera"))
+
+
 class JsonCamera:
     """
     Wraps a camera dict from the JSON model snapshot.
@@ -610,8 +625,9 @@ class JsonModel:
 
     @property
     def scenes(self):
-        # No scene/camera data in the JSON snapshot; live import skips cameras.
-        return []
+        """Saved SketchUp scenes. A scene without a camera (use_camera false) is skipped,
+        since there is no view to import for it."""
+        return [JsonScene(s) for s in self._d.get("scenes", []) or [] if s.get("camera")]
 
     @property
     def camera(self):
