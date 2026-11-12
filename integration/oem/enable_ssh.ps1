@@ -14,10 +14,14 @@
 $ErrorActionPreference = 'Stop'
 
 $logFile = 'C:\OEM\enable_ssh.log'
+# Mirror to the shared folder so the host can read it (see launch_sketchup.ps1).
+$guestLogDir = "$env:USERPROFILE\Desktop\Shared\guest_logs"
+try { New-Item -ItemType Directory -Force -Path $guestLogDir | Out-Null } catch { }
 function Log([string]$msg) {
     $line = "$(Get-Date -Format s) $msg"
     Write-Output $line
     Add-Content -Path $logFile -Value $line
+    try { Add-Content -Path "$guestLogDir\enable_ssh.log" -Value $line } catch { }
 }
 
 Log 'enable_ssh: begin'

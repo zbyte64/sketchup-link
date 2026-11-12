@@ -9,10 +9,21 @@
 # Shared folder (from host ./shared) is expected at:
 #   C:\Users\Docker\Desktop\Shared
 
-$logFile = "$env:TEMP\launch_sketchup.log"
-
-# Shared folder path
+# Shared folder path (defined first so the breadcrumb below can use it)
 $sharedRoot = "$env:USERPROFILE\Desktop\Shared"
+
+# Host-visible observability: the host can only read the shared folder, so every
+# run leaves a breadcrumb and a copy of its log there. The breadcrumb is written
+# with a bare Set-Content so it survives even if the rest of the script fails.
+$guestLogDir = "$sharedRoot\guest_logs"
+try {
+    New-Item -ItemType Directory -Force -Path $guestLogDir | Out-Null
+    Set-Content -Path "$guestLogDir\launch_started.txt" -Value ("started " + (Get-Date -Format s) + " user=" + $env:USERNAME)
+} catch {
+    # Shared folder not mounted yet; the local log below is the fallback.
+}
+
+$logFile = "$env:TEMP\launch_sketchup.log"
 
 # SketchUp paths
 $suInstallDir = "C:\Program Files\SketchUp\SketchUp 2025"
@@ -32,7 +43,10 @@ $pluginPollInterval = 5
 function Log {
     param([string]$msg)
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    "$timestamp - $msg" | Out-File -FilePath $logFile -Append
+    $line = "$timestamp - $msg"
+    $line | Out-File -FilePath $logFile -Append
+    # Mirror to the shared folder so the host can read it. Never let mirroring fail the run.
+    try { $line | Out-File -FilePath "$guestLogDir\launch_sketchup.log" -Append -Encoding UTF8 } catch { }
     Write-Host $msg
 }
 
