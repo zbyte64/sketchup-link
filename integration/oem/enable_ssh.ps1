@@ -26,13 +26,41 @@ function Log([string]$msg) {
 
 Log 'enable_ssh: begin'
 
-# 1. Install the OpenSSH server capability (no-op if already present)
-$cap = Get-WindowsCapability -Online -Name 'OpenSSH.Server~~~~0.0.1.0'
-if ($cap.State -ne 'Installed') {
-    Log 'installing OpenSSH.Server capability'
-    Add-WindowsCapability -Online -Name 'OpenSSH.Server~~~~0.0.1.0' | Out-Null
+# 1. Ensure an sshd binary exists. Try the built-in Windows capability first; on
+#    images where that capability is absent (observed on this VM, where the
+#    lookup returns nothing and Add-WindowsCapability stalls), fall back to the
+#    pinned, hash-verified Win32-OpenSSH package from GitHub.
+$sshdExe = 'C:\Windows\System32\OpenSSH\sshd.exe'
+if (Test-Path $sshdExe) {
+    Log 'sshd.exe already present'
 } else {
-    Log 'OpenSSH.Server already installed'
+    $cap = Get-WindowsCapability -Online -Name 'OpenSSH.Server~~~~0.0.1.0' -ErrorAction SilentlyContinue
+    if ($cap -and $cap.State -eq 'Installed') {
+        Log 'OpenSSH.Server capability reports installed; sshd.exe still missing'
+    } elseif ($cap) {
+        Log 'installing OpenSSH.Server capability'
+        Add-WindowsCapability -Online -Name 'OpenSSH.Server~~~~0.0.1.0' | Out-Null
+    } else {
+        # Pinned Win32-OpenSSH release (PowerShell/Win32-OpenSSH 10.4.0.0p1-Preview).
+        # Preview build, acceptable for this test VM. The SHA-256 is checked before
+        # anything from the archive is executed.
+        $pkgUrl = 'https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.4.0.0p1-Preview/OpenSSH-Win64.zip'
+        $pkgSha = 'b67ff8becd203502190ec42ac7787c24c2cd3325ed7700485fe7a1c83d2a7957'
+        $zip = "$env:TEMP\OpenSSH-Win64.zip"
+        $dest = 'C:\Program Files\OpenSSH'
+        Log "capability unavailable; downloading pinned Win32-OpenSSH package"
+        Invoke-WebRequest -Uri $pkgUrl -OutFile $zip -UseBasicParsing
+        $actual = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLower()
+        if ($actual -ne $pkgSha) { throw "OpenSSH package hash mismatch (got $actual)" }
+        Expand-Archive -Path $zip -DestinationPath 'C:\Program Files' -Force
+        # The zip extracts to "OpenSSH-Win64"; normalise to C:\Program Files\OpenSSH
+        if (Test-Path 'C:\Program Files\OpenSSH-Win64') {
+            if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
+            Rename-Item 'C:\Program Files\OpenSSH-Win64' $dest
+        }
+        & powershell.exe -ExecutionPolicy Bypass -NoProfile -File "$dest\install-sshd.ps1"
+        Log "installed Win32-OpenSSH from $pkgUrl"
+    }
 }
 
 # 2. Start the service and make it start automatically
