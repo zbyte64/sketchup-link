@@ -54,3 +54,14 @@ Verified on Blender 4.5.16 and 5.2.4 (captured from the GUI session on :99):
 - Screen captures are identical when nothing redraws, so compare hashes before claiming a
   change. A capture hash equal to the previous capture means no visible change.
 - Edit Mode leaks in from framing scripts; set `object.mode_set(mode="OBJECT")` first.
+
+## Camera and scene sync
+
+- **Camera (active view): supported.** The snapshot carries the active camera
+  (eye/target/up/fov). With `follow_viewport` on, a live sync puts the Blender viewport at
+  the SketchUp camera, and two syncs of a fixed camera give an identical view. Verified with
+  `integration/scripts/blender_camera_follow.py` on Blender 4.5.
+- **Scenes (saved pages): not supported, deferred.** The snapshot has no `scenes` key and the
+  reference model has zero saved scenes (`pages.count = 0`). Scene sync would transfer nothing
+  for the current model and would be untested code, so it is deferred until a test model has
+  scenes to exercise it.
