@@ -13,8 +13,29 @@ module SketchupLink
           'materials'             => serialize_materials(model.materials, entity_serializer, no_textures: no_textures, binary_textures: binary_textures),
           'layers'                => serialize_layers(model.layers, entity_serializer),
           'shadow_info'           => serialize_shadow_info(model),
-          'component_definitions' => serialize_definitions(model.definitions, entity_serializer)
+          'component_definitions' => serialize_definitions(model.definitions, entity_serializer),
+          'scenes'                => serialize_scenes(model.pages)
         }
+      end
+
+      # Saved scenes (SketchUp pages). Every scene is kept: a scene whose camera cannot be read is
+      # emitted with a null camera and the reason, never dropped, so a scene cannot vanish silently.
+      def self.serialize_scenes(pages)
+        pages.map do |page|
+          begin
+            camera = page.use_camera? ? serialize_camera(page.camera) : nil
+            {
+              'name'       => page.name,
+              'label'      => page.label,
+              'use_camera' => page.use_camera?,
+              'camera'     => camera,
+              'transition_time' => page.transition_time
+            }
+          rescue StandardError => e
+            SketchupLink.log_error('serialize_scene failed', e, scene: page.name)
+            { 'name' => page.name, 'camera' => nil, 'error' => e.message }
+          end
+        end
       end
 
       def self.serialize_materials(materials, entity_serializer, no_textures: false, binary_textures: false)

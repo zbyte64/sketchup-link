@@ -401,6 +401,17 @@ module SketchupLink
         side = [corners[a], corners[b], top[b], top[a]]
         visual.entities.add_face(side).material = blue_mat
       end
+
+      # --- Saved scenes (pages): one framed on the VisualCube, one without a camera ---
+      # Both branches of the scene serializer are exercised: use_camera true and false.
+      cam_view = Sketchup::Camera.new([vx + 20, -20, 15], [vx, 0, vs], [0, 0, 1])
+      model.active_view.camera = cam_view
+      scene_cam = model.pages.add('Cube front')
+      scene_cam.use_camera = true
+      scene_cam.update
+      scene_plain = model.pages.add('Plan')
+      scene_plain.use_camera = false
+      scene_plain.update
     end
 
   end
