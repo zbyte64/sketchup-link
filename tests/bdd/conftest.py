@@ -451,7 +451,10 @@ def given_test_model_available(request):
 
 @given('the Docker Windows VM is running with SketchUp installed')
 def given_docker_vm_running():
-    pytest.skip('Full VM mode not implemented — use Ruby mock server in CI')
+    # A skip here would let a scenario pass without testing anything. Fail loudly instead;
+    # VM scenarios belong in the live suite, which checks the server itself.
+    pytest.fail('"the Docker Windows VM is running" is not implemented in the BDD suite; '
+                'use the live reset (conftest) or remove the step from the feature')
 
 @given('SketchUp is serving on TCP')
 def given_sketchup_serving_on_tcp(request):
@@ -497,9 +500,10 @@ def when_import_to_blender(request, no_screenshots):
     In CI mode (--no-screenshots): skip.
     In full mode: available for use with Blender Docker container.
     """
-    if no_screenshots:
-        pytest.skip('CI mode — full Blender import not available')
-    pytest.skip('Full Blender import via Docker not implemented in this version')
+    # Blender import is verified by tests/integration (run inside Blender), not from here.
+    # Fail rather than skip, so a scenario that depends on this step cannot pass untested.
+    pytest.fail('"I import the model into Blender via live sync" is not implemented in the BDD '
+                'suite; run tests/integration/live_*.py inside Blender instead')
 
 
 @when('I move the FurnitureGroup in SketchUp')
