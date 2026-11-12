@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -35,7 +36,15 @@ def find_ruby() -> str:
         )
         if result.returncode == 0:
             return path
-    pytest.skip("Ruby executable not found — Ruby-side tests skipped")
+    # Ruby-backed tests cover most of the plugin. A missing Ruby must not look like a pass,
+    # so it fails by default. A host that knowingly lacks Ruby opts out explicitly with
+    # SKETCHUP_LINK_SKIP_RUBY=1, which is then visible in the run rather than silent.
+    if os.environ.get("SKETCHUP_LINK_SKIP_RUBY") == "1":
+        pytest.skip("Ruby executable not found; SKETCHUP_LINK_SKIP_RUBY=1 set explicitly")
+    pytest.fail(
+        "Ruby executable not found: the Ruby-backed unit tests cannot run. Install Ruby, "
+        "run them in the test container, or set SKETCHUP_LINK_SKIP_RUBY=1 to skip knowingly."
+    )
 
 
 @pytest.fixture(scope="session")
