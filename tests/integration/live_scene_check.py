@@ -50,5 +50,29 @@ for name in expected:
     if f"Cam: {name}" not in cameras:
         fail(f"no Blender camera 'Cam: {name}' for scene '{name}'; cameras are {sorted(cameras)}")
 
-print(f"LIVE-SCENE OK: cameras for scenes {expected}")
+# Assert the camera POSITION and VIEW DIRECTION match the stored scene, not just that it exists.
+# The camera's world location is the eye; its view direction is -Z of its world matrix, which
+# should point from the eye toward the target.
+from mathutils import Vector  # noqa: E402
+
+TOL = 1e-3  # metres; the snapshot is rounded to float precision
+for scene in snap.get("scenes", []):
+    if not scene.get("camera"):
+        continue
+    name = scene["name"]
+    ob = bpy.data.objects[f"Cam: {name}"]
+    eye = Vector(scene["camera"]["eye"])
+    target = Vector(scene["camera"]["target"])
+
+    loc = ob.matrix_world.translation
+    if (loc - eye).length > TOL:
+        fail(f"scene '{name}': camera at {tuple(round(v, 4) for v in loc)}, stored eye {tuple(round(v, 4) for v in eye)}")
+
+    view_dir = -(ob.matrix_world.to_3x3() @ Vector((0.0, 0.0, 1.0)))
+    want_dir = (target - eye).normalized()
+    if (view_dir.normalized() - want_dir).length > 1e-3:
+        fail(f"scene '{name}': view direction {tuple(round(v, 4) for v in view_dir.normalized())} "
+             f"does not point at stored target (expected {tuple(round(v, 4) for v in want_dir)})")
+
+print(f"LIVE-SCENE OK: position and direction match for scenes {expected}")
 sys.exit(0)
