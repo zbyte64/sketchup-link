@@ -18,6 +18,14 @@ from .log_config import get_logger
 
 _logger = get_logger()
 
+# Exponential backoff for repeated import failures in _sync_timer.
+# After each consecutive failure the delay doubles, starting from
+# BACKOFF_BASE_SECONDS, and is capped at BACKOFF_MAX_SECONDS.
+# A successful import resets the delay to the normal poll interval.
+BACKOFF_BASE_SECONDS = 2.0
+BACKOFF_MAX_SECONDS = 60.0
+BACKOFF_MULTIPLIER = 2.0
+
 _sync_state: dict = {
     "running": False,
     "thread": None,
@@ -37,8 +45,16 @@ def _poll_loop(
     """Background daemon thread: polls SketchUp and queues model snapshots."""
     while not stop_event.wait(timeout=interval):
         try:
-            _logger.info(f"Polling SketchUp (interval={interval}s)")
-            q.put(fetch_model_json(conn_config=conn_config))
+            _logger.debug(f"Polling SketchUp (interval={interval}s)")
+            if conn_config["mode"] == "UNIX":
+                snapshot = fetch_model_json(conn_config=conn_config)
+            else:
+                snapshot = fetch_model_json_tcp(
+                    conn_config["host"],
+                    conn_config["port"],
+                    conn_config.get("binary_textures", False),
+                )
+            q.put(snapshot)
         except Exception:
             _logger.warning("poll failed", exc_info=True)
 
@@ -48,6 +64,8 @@ def _sync_timer() -> "float | None":
 
     Drains the queue (keeping only the freshest snapshot) and triggers a
     live import via SceneImporter.load() directly with the queued JSON.
+    On repeated import failures the retry delay backs off exponentially
+    (see BACKOFF_* constants) and resets after a successful import.
     Returns None to unregister once the sync has been stopped.
     """
     state = _sync_state
@@ -62,37 +80,53 @@ def _sync_timer() -> "float | None":
     except queue.Empty:
         pass
 
-    if latest is not None:
-        _logger.info(f"Importing model snapshot (queue had data)")
+    if latest is None:
+        return _next_delay(state)
+
+    _logger.info(f"Importing model snapshot (queue had data)")
+    try:
+        importer = SceneImporter()
+        importer.set_filename("")
+        importer.skp_model = JsonModel(latest)
+
+        options = dict(
+            filepath="",
+            scenes_as_camera=False,
+            import_camera=False,
+            reuse_material=True,
+            dedub_only=False,
+            reuse_existing_groups=False,
+            max_instance=1,
+            dedub_type="VERTEX",
+            import_scene="",
+        )
+        importer.load(bpy.context, **options)
+
+        # Follow SketchUp viewport if enabled
         try:
-            importer = SceneImporter()
-            importer.set_filename("")
-            importer.skp_model = JsonModel(latest)
+            prefs = bpy.context.preferences.addons[__package__].preferences
+            if prefs.follow_viewport:
+                _apply_viewport(importer.skp_model.camera)
+        except Exception:
+            _logger.debug("viewport follow skipped", exc_info=True)
+        state["failures"] = 0
+    except Exception as e:
+        state["failures"] = state.get("failures", 0) + 1
+        _logger.error(
+            f"live sync import failed (consecutive={state['failures']}): {e}",
+            exc_info=True,
+        )
 
-            options = dict(
-                filepath="",
-                scenes_as_camera=False,
-                import_camera=False,
-                reuse_material=True,
-                dedub_only=False,
-                reuse_existing_groups=False,
-                max_instance=1,
-                dedub_type="VERTEX",
-                import_scene="",
-            )
-            importer.load(bpy.context, **options)
+    return _next_delay(state)
 
-            # Follow SketchUp viewport if enabled
-            try:
-                prefs = bpy.context.preferences.addons[__package__].preferences
-                if prefs.follow_viewport:
-                    _apply_viewport(importer.skp_model.camera)
-            except Exception:
-                _logger.debug("viewport follow skipped", exc_info=True)
-        except Exception as e:
-            _logger.error(f"live sync import failed: {e}", exc_info=True)
 
-    return state["interval"]
+def _next_delay(state: dict) -> float:
+    """Return the timer delay: normal interval, or backed-off after failures."""
+    failures = state.get("failures", 0)
+    if failures <= 0:
+        return state["interval"]
+    delay = BACKOFF_BASE_SECONDS * (BACKOFF_MULTIPLIER ** (failures - 1))
+    return min(max(delay, state["interval"]), BACKOFF_MAX_SECONDS)
 
 
 def _apply_viewport(camera):
