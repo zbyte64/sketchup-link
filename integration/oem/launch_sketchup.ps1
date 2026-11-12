@@ -370,7 +370,10 @@ try {
     if (Test-Path $mcpRbz) {
         $mcpTmp = "$env:TEMP\su_mcp_unpack"
         Remove-Item $mcpTmp -Recurse -Force -ErrorAction SilentlyContinue
-        Expand-Archive -Path $mcpRbz -DestinationPath $mcpTmp -Force
+        # Expand-Archive only accepts .zip names; an .rbz is a plain zip, so copy it to a .zip first.
+        $mcpZip = "$env:TEMP\su_mcp_package.zip"
+        Copy-Item $mcpRbz $mcpZip -Force
+        Expand-Archive -Path $mcpZip -DestinationPath $mcpTmp -Force
         Remove-Item (Join-Path $pluginsDir "su_mcp") -Recurse -Force -ErrorAction SilentlyContinue
         Copy-Item (Join-Path $mcpTmp "su_mcp") $pluginsDir -Recurse -Force
         Copy-Item (Join-Path $mcpTmp "su_mcp.rb") $pluginsDir -Force
