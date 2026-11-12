@@ -346,14 +346,17 @@ Kill-Stale-Processes
 # Step 3: Suppress dialogs
 Ensure-Preferences
 
-# Step 3.2: Deploy the test-VM TCP loader into Plugins. It sets use_tcp=true so the
-# host can reach sketchup_link on 9876 (the product default stays Unix-first).
+# Step 3.2: Deploy the test dev extension into Plugins, before SketchUp starts.
+#  (a) sketchup_link_testenv.rb sets use_tcp=true so the host reaches sketchup_link
+#      on 9876 (the product default stays Unix-first).
+#  (b) The sketchup-mcp .rbz is a zip in the loose-install layout (su_mcp.rb +
+#      su_mcp/), so it is unpacked straight into Plugins. No Extension Manager click.
 # Non-fatal: a failure here must never block the SketchUp launch below.
+$pluginsDir = "$env:APPDATA\SketchUp\SketchUp 2025\SketchUp\Plugins"
 try {
-    $pluginsDir = "$env:APPDATA\SketchUp\SketchUp 2025\SketchUp\Plugins"
+    New-Item -ItemType Directory -Force -Path $pluginsDir | Out-Null
     $loaderSrc = "C:\OEM\sketchup_link_testenv.rb"
     if (Test-Path $loaderSrc) {
-        New-Item -ItemType Directory -Force -Path $pluginsDir | Out-Null
         Copy-Item $loaderSrc (Join-Path $pluginsDir "sketchup_link_testenv.rb") -Force
         Log "Deployed test-VM TCP loader to $pluginsDir"
     } else {
@@ -361,6 +364,22 @@ try {
     }
 } catch {
     Log "WARNING: could not deploy TCP loader: $($_.Exception.Message)"
+}
+try {
+    $mcpRbz = "$sharedRoot\su_mcp_v1.6.0.rbz"
+    if (Test-Path $mcpRbz) {
+        $mcpTmp = "$env:TEMP\su_mcp_unpack"
+        Remove-Item $mcpTmp -Recurse -Force -ErrorAction SilentlyContinue
+        Expand-Archive -Path $mcpRbz -DestinationPath $mcpTmp -Force
+        Remove-Item (Join-Path $pluginsDir "su_mcp") -Recurse -Force -ErrorAction SilentlyContinue
+        Copy-Item (Join-Path $mcpTmp "su_mcp") $pluginsDir -Recurse -Force
+        Copy-Item (Join-Path $mcpTmp "su_mcp.rb") $pluginsDir -Force
+        Log "Unpacked sketchup-mcp into $pluginsDir (loose layout)"
+    } else {
+        Log "WARNING: $mcpRbz not found; MCP server will not be deployed"
+    }
+} catch {
+    Log "WARNING: could not unpack sketchup-mcp: $($_.Exception.Message)"
 }
 
 # Step 3.5: One-time SSH bootstrap for VMs built before enable_ssh.ps1 existed.
