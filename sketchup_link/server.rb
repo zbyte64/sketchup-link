@@ -384,6 +384,23 @@ module SketchupLink
       # --- Top-level entity [4]: ComponentInstance on layer Furniture ---
       inst = model.entities.add_instance(chair_def, Geom::Transformation.new)
       inst.layer = furniture_layer
+
+      # --- Top-level entity [5]: VisualCube, a large cube whose every face is Blue ---
+      # Appended after the existing entities so their indices do not move. It sits clear
+      # of the other geometry so a material or transform change on it is visible in a
+      # viewport capture. Used by the visual checks in tests/integration.
+      visual = model.entities.add_group
+      visual.name = 'VisualCube'
+      vs = 6.0
+      vx = 20.0
+      corners = [[vx - vs, -vs, 0], [vx + vs, -vs, 0], [vx + vs, vs, 0], [vx - vs, vs, 0]]
+      top = [[vx - vs, -vs, 2 * vs], [vx + vs, -vs, 2 * vs], [vx + vs, vs, 2 * vs], [vx - vs, vs, 2 * vs]]
+      visual.entities.add_face(corners).material = blue_mat
+      visual.entities.add_face(top).material = blue_mat
+      [[0, 1], [1, 2], [2, 3], [3, 0]].each do |a, b|
+        side = [corners[a], corners[b], top[b], top[a]]
+        visual.entities.add_face(side).material = blue_mat
+      end
     end
 
   end
