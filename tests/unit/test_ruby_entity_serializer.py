@@ -307,18 +307,36 @@ class TestEntitySerializer:
     # ── Layer ─────────────────────────────────────────────────────────
 
     def test_serialize_layer_structure(self):
-        """Layer serialization includes name, visible, color, line_width."""
+        """Layer serialization includes the properties the SketchUp layer API provides."""
         entity = {
             "name": "MyLayer",
+            "display_name": "MyLayer",
             "visible": True,
             "color": [100, 150, 200, 255],
-            "line_width": 2,
+            "line_style": "Dashed",
         }
         result = self._run("serialize_layer", entity)
         assert result["name"] == "MyLayer"
+        assert result["display_name"] == "MyLayer"
         assert result["visible"] is True
         assert result["color"] == {"r": 100, "g": 150, "b": 200, "a": 255}
-        assert result["line_width"] == 2
+        assert result["line_style"] == "Dashed"
+        # line_width is not a Sketchup::Layer method on this SketchUp version.
+        assert "line_width" not in result
+
+    def test_serialize_layer_without_line_style_omits_it(self):
+        """A layer with no line style (line_style is nil in SketchUp) omits the key."""
+        entity = {
+            "name": "Hidden",
+            "display_name": "Hidden",
+            "visible": False,
+            "color": [0, 153, 135, 255],
+            "line_style": None,
+        }
+        result = self._run("serialize_layer", entity)
+        assert result["name"] == "Hidden"
+        assert result["visible"] is False
+        assert "line_style" not in result
 
     def test_serialize_layer_fallback_on_error(self):
         """When layer serialization raises, fallback is {name, visible} only."""

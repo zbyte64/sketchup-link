@@ -418,10 +418,10 @@ def test_layers_serialization():
     assert layer0["name"] == "Main"
     assert layer0["visible"] is True
     assert layer0["color"] == {"r": 128, "g": 128, "b": 128, "a": 255}
-    assert layer0["line_width"] == 1
+    assert "line_width" not in layer0  # not a Sketchup::Layer method on this version
 
     layer1 = result[1]
     assert layer1["name"] == "Hidden"
     assert layer1["visible"] is False
     assert layer1["color"] == {"r": 200, "g": 50, "b": 50, "a": 255}
-    assert layer1["line_width"] == 3
+    assert "line_width" not in layer1  # not a Sketchup::Layer method on this version

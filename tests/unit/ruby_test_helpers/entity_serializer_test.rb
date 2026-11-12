@@ -1,5 +1,10 @@
 # frozen_string_literal: true
 
+module SketchupLink
+  def self.log(level, msg, context = {}); end
+  def self.log_error(msg, exception, context = {}); end
+end
+
 require 'json'
 
 # ------------------------------------------------------------------
@@ -108,7 +113,11 @@ module StubBuilders
     layer.define_singleton_method(:name)       { data['name'] || '' }
     layer.define_singleton_method(:visible?)   { data['visible'] != false }
     layer.define_singleton_method(:color)      { StubBuilders.build_color(data['color'] || [200, 200, 200, 255]) }
-    layer.define_singleton_method(:line_width) { data['line_width'] || 1 }
+    # Mirror Sketchup::Layer on SketchUp 2025: no line_width; line_style is nil when absent.
+    layer.define_singleton_method(:display_name) { data['display_name'] || data['name'] || '' }
+    layer.define_singleton_method(:line_style) do
+      data['line_style'] ? Struct.new(:name).new(data['line_style']) : nil
+    end
     layer
   end
 

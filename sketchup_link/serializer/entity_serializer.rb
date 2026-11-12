@@ -174,13 +174,19 @@ module SketchupLink
       # ------------------------------------------------------------------
       # Layer
       # ------------------------------------------------------------------
+      # Sketchup::Layer has no line_width on SketchUp 2025 (a call to it raised and
+      # silently dropped the colour). Serialize the properties the API provides; line_style
+      # is nil on layers that have none, so it is emitted only when present.
       def self.serialize_layer(layer)
-        {
-          'name'       => layer.name,
-          'visible'    => layer.visible?,
-          'color'      => color_to_hash(layer.color),
-          'line_width' => layer.line_width
+        h = {
+          'name'         => layer.name,
+          'display_name' => layer.display_name,
+          'visible'      => layer.visible?,
+          'color'        => color_to_hash(layer.color)
         }
+        style = layer.line_style
+        h['line_style'] = style.name if style.respond_to?(:name) && style.name
+        h
       rescue StandardError => e
         SketchupLink.log_error('Failed to serialize layer', e, layer: layer.name)
         { 'name' => layer.name, 'visible' => layer.visible? }
