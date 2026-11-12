@@ -1257,7 +1257,8 @@ _PURGE_ALL = (
     "m.entities.to_a.each { |e| e.erase! rescue nil }; "
     "m.definitions.to_a.each { |d| m.definitions.purge_unused rescue nil }; "
     "m.materials.to_a.each { |x| m.materials.remove(x) rescue nil }; "
-    "[m.materials.count, m.definitions.count, m.entities.count].join(',')"
+    "m.pages.to_a.each { |pg| m.pages.erase(pg) rescue nil }; "
+    "[m.materials.count, m.definitions.count, m.entities.count, m.pages.count].join(',')"
 )
 
 
@@ -1357,8 +1358,8 @@ def _reset_live_model(request):
             % _MCP_LOCAL_PORT)
     result = purged.get('result', {})
     text = (result.get('content') or [{}])[0].get('text')
-    # The purge reports "materials,definitions,entities" left after the purge: all must be 0.
-    assert not result.get('isError') and text == '0,0,0', (
+    # The purge reports "materials,definitions,entities,pages" left after the purge: all must be 0.
+    assert not result.get('isError') and text == '0,0,0,0', (
         f'model reset incomplete: materials,definitions,entities left = {text!r} '
         f'(error={purged.get("error")!r})')
     status = _post_json('/test_model', None)
