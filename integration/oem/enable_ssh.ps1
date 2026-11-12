@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# enable_ssh.ps1 — install and start the built-in Windows OpenSSH server.
+# enable_ssh.ps1 - install and start the built-in Windows OpenSSH server.
 #
 # Provides a verifiable, scriptable command channel into the guest so the host
 # can run PowerShell remotely (e.g. refresh_plugin.ps1) without GUI keystrokes.
@@ -83,7 +83,7 @@ if (Test-Path $hostKey) {
     Log "WARNING: no host public key at $hostKey; key login will not work until one is provided"
 }
 
-# 5. Verify — report success only if the server is actually listening
+# 5. Verify - report success only if the server is actually listening
 Start-Sleep -Seconds 2
 $listening = Get-NetTCPConnection -LocalPort 22 -State Listen -ErrorAction SilentlyContinue
 if ((Get-Service sshd).Status -eq 'Running' -and $listening) {

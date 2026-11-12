@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# refresh_plugin.ps1 — re-deploy the SketchUp Link plugin into the guest.
+# refresh_plugin.ps1 - re-deploy the SketchUp Link plugin into the guest.
 #
 # Repeatable counterpart to Step 3 of install_sketchup.ps1. The one-shot
 # first-logon installer is gated by C:\OEM\.install_done, so it never re-copies
@@ -31,7 +31,7 @@ function Log([string]$msg) {
 Log "refresh_plugin: source=$pluginSrc dest=$pluginsDir"
 
 if (-not (Test-Path "$pluginSrc\sketchup_link.rb")) {
-    throw "No plugin entry at $pluginSrc\sketchup_link.rb — is the shared folder mounted?"
+    throw "No plugin entry at $pluginSrc\sketchup_link.rb - is the shared folder mounted?"
 }
 
 # Remove stale Extensions copies (they do not auto-load; see install_sketchup.ps1)
