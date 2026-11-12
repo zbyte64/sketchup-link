@@ -1,0 +1,40 @@
+# syntax=docker/dockerfile:1
+# Unit-test runner for sketchup-link: Python 3.13 (uv) + Ruby (bundler).
+# Provides the X/GL system libraries that the bpy wheel links against so that
+# blender_plugin/__init__.py can be imported in tests.
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    make \
+    ruby-full \
+    build-essential \
+    libxxf86vm1 \
+    libxfixes3 \
+    libxi6 \
+    libxrender1 \
+    libgl1 \
+    libegl1 \
+    libxkbcommon0 \
+    libsm6 \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# uv (Python package manager) — installs CPython 3.13 on demand
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Ruby bundler for packaging (rubyzip is the only gem)
+RUN gem install bundler --no-document
+
+WORKDIR /plugin
+COPY . /plugin
+
+# Install Python deps and Ruby deps up front so test runs are fast
+RUN uv sync --python 3.13 && bundle install
+
+CMD ["sleep", "infinity"]

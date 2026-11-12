@@ -24,3 +24,17 @@ integration/screendump.ppm
 integration/vm_screenshot*.png
 /shared/
 dist/*.zip
+
+# Tooling caches
+.pytest_cache/
+.ruby-lsp/
+.hypothesis/
+
+# Native build outputs
+*.so
+
+# SketchUp installer binaries
+integration/shared/installers/*.exe
+
+# Runtime heartbeat written by the SketchUp VM into the shared folder
+integration/shared/sketchup_status.json

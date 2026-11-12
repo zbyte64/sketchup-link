@@ -37,3 +37,15 @@ services:
     restart: "no"
     cap_add:
       - SYS_ADMIN
+  blender-5.2:
+    build:
+      context: ..
+      dockerfile: integration/Dockerfile.blender-5.2
+    container_name: blender-5.2
+    volumes:
+      - ../tests/bdd/screenshots:/screenshots
+    depends_on:
+      - windows
+    restart: "no"
+    cap_add:
+      - SYS_ADMIN
