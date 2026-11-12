@@ -281,6 +281,25 @@ Kill-Stale-Processes
 # Step 3: Suppress dialogs
 Ensure-Preferences
 
+# Step 3.5: One-time SSH bootstrap for VMs built before enable_ssh.ps1 existed.
+# Runs once (marker-guarded), is non-fatal, and leaves no marker on failure so the
+# next logon retries. It can never block the SketchUp launch below.
+$sshMarker = "C:\OEM\.ssh_bootstrap_done"
+if (-not (Test-Path $sshMarker) -and (Test-Path "C:\OEM\enable_ssh.ps1")) {
+    Log "SSH bootstrap: running enable_ssh.ps1 (one-time)"
+    try {
+        & powershell.exe -ExecutionPolicy Bypass -NoProfile -File "C:\OEM\enable_ssh.ps1"
+        if ($LASTEXITCODE -eq 0) {
+            Set-Content -Path $sshMarker -Value (Get-Date -Format s)
+            Log "SSH bootstrap: done (marker written)"
+        } else {
+            Log "SSH bootstrap: enable_ssh.ps1 exited $LASTEXITCODE; will retry next logon"
+        }
+    } catch {
+        Log "SSH bootstrap: failed ($($_.Exception.Message)); will retry next logon"
+    }
+}
+
 # Step 4: Launch SketchUp
 $launched = Start-SketchUp
 if (-not $launched) {
