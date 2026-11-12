@@ -124,9 +124,12 @@ module SketchupLink
       nil
     end
 
+    # Always (re)schedule the debounce. Ruby runs on one thread, so a UI timer cannot
+    # fire in the middle of an operation; a commit dispatches and clears the batch, and
+    # a later timer then finds it empty and does nothing. The depth counter must not
+    # gate event delivery: it can drift (an operation that raises before commit leaves
+    # it above zero), which silently suppressed every later edit.
     def debounce_if_no_transaction
-      return if @transaction_depth > 0
-
       cancel_debounce
       model = Sketchup.active_model
       @debounce_timer_id = UI.start_timer(TIMER_INTERVAL) do
