@@ -94,8 +94,29 @@ def fetch_model_json(conn_config=None, socket_path=None):
     if conn_config is None:
         conn_config = _build_conn_config()
     if conn_config["mode"] == "UNIX":
-        return _fetch_model_json_unix(conn_config["socket_path"])
-    return fetch_model_json_tcp(conn_config["host"], conn_config["port"], conn_config.get("binary_textures", False))
+        try:
+            result = _fetch_model_json_unix(conn_config["socket_path"])
+            if DEBUG:
+                _logger.debug("fetch_model_json: succeeded over UNIX socket")
+            return result
+        except OSError as exc:
+            # Unix-first with TCP fallback: retry over TCP when a host/port is configured.
+            host = conn_config.get("host")
+            port = conn_config.get("port")
+            if not host or not port:
+                raise
+            _logger.warning(
+                f"UNIX socket connection failed ({exc}); falling back to TCP {host}:{port}"
+            )
+            result = fetch_model_json_tcp(host, port, conn_config.get("binary_textures", False))
+            _logger.info(f"fetch_model_json: succeeded over TCP fallback {host}:{port}")
+            return result
+    result = fetch_model_json_tcp(conn_config["host"], conn_config["port"], conn_config.get("binary_textures", False))
+    if DEBUG:
+        _logger.debug("fetch_model_json: succeeded over TCP")
+    return result
+
+
 def _fetch_model_json_unix(socket_path):
     """GET /model over Unix socket."""
     conn = _UnixSocketHTTPConnection(socket_path)

@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-SketchUp Link is a dual-language live-sync system between SketchUp and Blender. A Ruby plugin running inside SketchUp acts as an HTTP-over-Unix-socket server, streaming model snapshots and change events. A Python Blender addon connects to the socket to import the active SketchUp model live into Blender.
+SketchUp Link is a dual-language live-sync system between SketchUp and Blender. A Ruby plugin running inside SketchUp acts as an HTTP server (TCP on `127.0.0.1`-reachable port 9876 by default; a Unix domain socket is optional), streaming model snapshots and change events. A Python Blender addon connects to that server to import the active SketchUp model live into Blender.
 
 The Blender addon (`blender_plugin/`) is self-contained: it includes `SceneImporter.load()` — the shared import codepath — plus duck-typed JSON adapters (`live_adapter.py`) that present the JSON socket response with the same interface as the Cython SLAPI bindings, and optional Cython/Rust bindings for native `.skp` file import via the SketchUp SDK.
 
@@ -65,7 +65,7 @@ and `windows/` (Docker VM state), plus the three sibling extensions under
 ```
 
 **Key architectural decisions:**
-- **Dual-language, dual-entrypoint**: Ruby runs inside SketchUp (Windows/macOS); Python runs inside Blender (cross-platform). The only interface between them is the Unix socket protocol.
+- **Dual-language, dual-entrypoint**: Ruby runs inside SketchUp (Windows/macOS); Python runs inside Blender (cross-platform). The only interface between them is the HTTP/1.1 protocol over TCP (default) or a Unix socket (optional).
 - **Duck-typed adapter layer**: `live_adapter.py` in `blender_plugin/` provides `JsonModel`, `JsonFace`, `JsonGroup`, etc. classes that present the JSON socket response with the same interface as the Cython SLAPI bindings. This lets `SceneImporter.load()` work identically with both live JSON and native `.skp` files.
 - **Event-driven with debounce**: Entity changes inside SketchUp transactions are batched until commit; direct edits are debounced (50ms timer). Selection, materials, and layers events fire immediately.
 - **Poll-based live sync on Blender side**: A background daemon thread polls `GET /model` every 2s; the main-thread timer drains the queue (keeping only the most recent snapshot) and calls `SceneImporter.load()` directly (no `bpy.ops` round-trip).
@@ -212,7 +212,9 @@ make build-rust
 
 **Transport:** HTTP/1.1 over AF_UNIX (`http.client.HTTPConnection` subclass overriding `connect()`). No external HTTP libraries used on either side.
 
-**Socket path:** Platform-aware via `ENV['TEMP']` (Windows) / `ENV['TMP']` / `/tmp` (Unix). Test suite uses `-test.sock` suffix to avoid collisions.
+**Transport defaults (Unix-first with TCP fallback):** `sketchup_link/constants.rb` sets `DEFAULT_USE_TCP = false`, so the SketchUp server prefers the Unix domain socket. If binding the Unix socket fails, `Server#start` logs a warning and binds TCP on `DEFAULT_TCP_PORT = 9876` (`0.0.0.0`) instead. The `use_tcp` preference (or `SERVER_MODE`/`TCP_PORT` env vars) can still force a mode explicitly. On the Blender side, `connection_mode` defaults to `UNIX`; `fetch_model_json` tries the Unix socket first and, if the connection fails and `tcp_host` (`127.0.0.1`) / `tcp_port` (9876) are configured, retries over TCP and logs which transport succeeded.
+
+**Socket path (Unix mode only):** Platform-aware via `ENV['TEMP']` (Windows) / `ENV['TMP']` / `/tmp` (Unix). Test suite uses `-test.sock` suffix to avoid collisions.
 
 **JSON format:** Snake_case keys from Ruby (`model_guid`, `persistent_id`, `back_material`). No version field in the protocol — both sides are versioned together.
 
@@ -224,8 +226,8 @@ make build-rust
 |`sketchup_link.rb` (extension root)|Registers `SketchupExtension`, loads `main.rb`|
 |`sketchup_link/main.rb`|Requires all modules, creates `SketchupLink::PLUGIN`|
 |`sketchup_link/plugin.rb`|Orchestrator — creates Server, EventDispatcher, SubscriptionManager, attaches AppObserver|
-|`sketchup_link/constants.rb`|Version (1.0.0), extension ID, timer interval, socket path, event type constants|
-|`sketchup_link/server.rb`|Unix socket HTTP server — `IO.select` tick loop, `GET /model`, `GET /subscribe` (chunked SSE), `DELETE /unsubscribe`|
+|`sketchup_link/constants.rb`|Version (1.1.0), extension ID, timer interval, TCP/socket defaults (`DEFAULT_USE_TCP`, `DEFAULT_TCP_PORT`), socket path, event type constants|
+|`sketchup_link/server.rb`|HTTP server over TCP (default) or Unix socket — timer-driven tick loop, `GET /model`, `GET /subscribe` (chunked SSE), `DELETE /unsubscribe`|
 |`sketchup_link/event_dispatcher.rb`|Transaction batching, debounce timer, deduplication, event envelope formatting|
 |`sketchup_link/subscription_manager.rb`|Subscriber registry, NDJSON dispatch, dead socket pruning|
 |`sketchup_link/serializer/entity_serializer.rb`|Serializes Face (tessellation), Edge, Group, Instance, ComponentDefinition, Material, Layer|

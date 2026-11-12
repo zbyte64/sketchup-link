@@ -23,8 +23,15 @@ module SketchupLink
       @socket_path = config[:socket_path] || DEFAULT_SOCKET_PATH
       @tcp_port = (config[:tcp_port] || ENV['TCP_PORT'] || DEFAULT_TCP_PORT).to_i
       if @mode == :unix
-        File.delete(@socket_path) if File.exist?(@socket_path)
-        @server = UNIXServer.new(@socket_path)
+        begin
+          File.delete(@socket_path) if File.exist?(@socket_path)
+          @server = UNIXServer.new(@socket_path)
+        rescue StandardError => e
+          # Unix-first with TCP fallback: if the socket cannot be bound, serve over TCP instead.
+          SketchupLink.log(:warn, 'Unix socket bind failed, falling back to TCP', socket_path: @socket_path, error: e.message)
+          @mode = :tcp
+          @server = TCPServer.new('0.0.0.0', @tcp_port)
+        end
       else
         @server = TCPServer.new('0.0.0.0', @tcp_port)
       end
