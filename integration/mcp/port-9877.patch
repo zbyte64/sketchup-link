@@ -1,0 +1,26 @@
+diff --git a/src/sketchup_mcp/server.py b/src/sketchup_mcp/server.py
+index bce8fef..9c8f657 100644
+--- a/src/sketchup_mcp/server.py
++++ b/src/sketchup_mcp/server.py
+@@ -219,7 +219,7 @@ def get_sketchup_connection():
+             _sketchup_connection = None
+     
+     if _sketchup_connection is None:
+-        _sketchup_connection = SketchupConnection(host="localhost", port=9876)
++        _sketchup_connection = SketchupConnection(host="localhost", port=9877)  # patched: must match su_mcp main.rb
+         if not _sketchup_connection.connect():
+             logger.error("Failed to connect to Sketchup")
+             _sketchup_connection = None
+diff --git a/su_mcp/su_mcp/main.rb b/su_mcp/su_mcp/main.rb
+index 90117b4..d549802 100644
+--- a/su_mcp/su_mcp/main.rb
++++ b/su_mcp/su_mcp/main.rb
+@@ -9,7 +9,7 @@ SKETCHUP_CONSOLE.show rescue nil
+ module SU_MCP
+   class Server
+     def initialize
+-      @port = 9876
++      @port = 9877  # patched: avoid collision with sketchup_link on 9876
+       @server = nil
+       @running = false
+       @timer_id = nil

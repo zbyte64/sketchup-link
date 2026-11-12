@@ -44,3 +44,6 @@ integration/shared/ssh/
 
 # Generated: OEM scripts staged for the guest to copy into C:\OEM (regenerated, not source)
 integration/shared/oem_stage/
+
+# Generated: vendored third-party MCP extension staged for the VM (rebuilt from integration/mcp/PIN.txt)
+integration/shared/sketchup-mcp-staged/

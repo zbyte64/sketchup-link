@@ -1,0 +1,10 @@
+Upstream: https://github.com/mhyrr/sketchup-mcp
+Pinned commit: aa096f04d3d7b22a70860368f2b576343feac405 (main at time of pin)
+Patch: port-9877.patch (changes the Ruby server and Python client port 9876 -> 9877)
+Digests (sha256):
+  su_mcp/su_mcp/main.rb (patched): 4a6b0bf986bb97c40b7d8187db6324adb1a9725dec3628734ab532992634f72b
+  su_mcp/su_mcp/main.rb (upstream): cba5f410293941f934004ac9078e9ae64af997de74bfec441e8ea5a632ac121d
+  port-9877.patch: e390f92526c8c7967b9ab0de1a371e84f98218f0d04deeab8673587847ca7016
+Reproduce:
+  git clone https://github.com/mhyrr/sketchup-mcp && git -C sketchup-mcp checkout aa096f04d3d7b22a70860368f2b576343feac405
+  git -C sketchup-mcp apply ../port-9877.patch
