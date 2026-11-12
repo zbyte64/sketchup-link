@@ -216,7 +216,7 @@ module SketchupLink
           remove_client(client)
         end
 
-      when /\APOST \/control\/(.+)(\s|\z)/
+      when /\APOST \/control\/(\S+)/
         sub_path = Regexp.last_match(1)
         body = _body
         params = begin
