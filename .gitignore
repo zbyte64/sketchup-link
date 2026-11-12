@@ -38,3 +38,6 @@ integration/shared/installers/*.exe
 
 # Runtime heartbeat written by the SketchUp VM into the shared folder
 integration/shared/sketchup_status.json
+
+# Host SSH keypair used to reach the SketchUp VM (private key must never be committed)
+integration/shared/ssh/
