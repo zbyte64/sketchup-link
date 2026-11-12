@@ -146,6 +146,11 @@ def _push_pending_edits():
             _push_delete(pid, sync_push)
             edit_capture.tracker().forget(pid)
 
+        # Adds made in Blender: a mesh object with no SketchUp identity is new geometry. Each
+        # polygon is pushed as a face, and the id SketchUp returns is written back so the object is
+        # enrolled and never pushed again (echo suppression).
+        _push_new_meshes(sync_push, bpy)
+
         edits = edit_capture.drain_pending()
         if not edits:
             return
@@ -177,6 +182,44 @@ def _push_pending_edits():
                 _logger.warning(f"push failed: {result.error}")
     except Exception:
         _logger.warning("edit push skipped", exc_info=True)
+
+
+def _push_new_meshes(sync_push, bpy):
+    """Push untagged Blender meshes to SketchUp as faces, one per polygon, and enrol them.
+
+    The face route takes metres in world space, so vertices are transformed by the object's world
+    matrix first. Each polygon's loop is converted by geometry_push, so holes and degenerate faces
+    are handled there. A polygon that SketchUp accepts gets its id written onto the object; the
+    object is enrolled once every polygon has been pushed. Failures are logged, never raised.
+    """
+    from . import edit_capture, geometry_push
+    cc = _sync_state["conn_config"]
+    for ob in list(bpy.data.objects):
+        # Only user geometry is pushed. A tagged object already has an identity, and an object the
+        # importer created carries IMPORT_MARKER (skp_link_import): pushing it back would echo SketchUp's
+        # own geometry as new faces on every sync.
+        if ob.type != "MESH" or "skp_persistent_id" in ob or ob.get("skp_link_import"):
+            continue
+        me = ob.data
+        coords = [tuple(ob.matrix_world @ v.co) for v in me.vertices]
+        loops = [list(p.vertices) for p in me.polygons]
+        pids = []
+        for face in geometry_push.polygons_to_faces(coords, loops):
+            body = json.dumps(face.body()).encode()
+            req = urllib.request.Request(f"http://{cc['host']}:{cc['port']}/control/geometry/face",
+                                         data=body, method="POST",
+                                         headers={"Content-Type": "application/json"})
+            try:
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    pids.append(int(json.loads(r.read())["persistent_id"]))
+            except Exception:
+                _logger.warning(f"face push failed for {ob.name}", exc_info=True)
+        if pids:
+            # The object's identity is the first face SketchUp created for it. Recording it as synced
+            # is what stops the next sync from pushing the same polygons again.
+            ob["skp_persistent_id"] = pids[0]
+            edit_capture.tracker().record_sync(pids[0], tuple(v for row in ob.matrix_basis for v in row),
+                                               None)
 
 
 def _push_delete(persistent_id, sync_push):
