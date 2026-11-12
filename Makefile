@@ -79,7 +79,7 @@ set-version: ## Set a new version across all files  usage: make set-version VERS
 
 .PHONY: install-ruby
 install-ruby: ## Install Ruby gem dependencies (bundler)
-	cd ../.. && bundle install
+	bundle install
 
 .PHONY: package dist
 package:      ## Build the .rbz extension archive
@@ -112,6 +112,13 @@ package-python: ## Build the .zip extension archive for Blender
 .PHONY: release
 release: version-check package package-python ## Run version-check, package, and package-python sequentially
 # ── Docker (Windows 11 VM for SketchUp) ──────────────────────────
+
+.PHONY: docker-build-blender-4.5 docker-build-blender-5.2 docker-build-blender
+docker-build-blender-4.5: ## Build the Blender 4.5 LTS test image (Python 3.11)
+	docker build -f integration/Dockerfile.blender-4.5 -t sketchup-link-blender:4.5 .
+docker-build-blender-5.2: ## Build the Blender 5.2 LTS test image (Python 3.13)
+	docker build -f integration/Dockerfile.blender-5.2 -t sketchup-link-blender:5.2 .
+docker-build-blender: docker-build-blender-4.5 docker-build-blender-5.2 ## Build all Blender target images (4.5 and 5.2)
 
 .PHONY: test-blender-target
 test-blender-target: ## Run tests in a Blender target image  usage: make test-blender-target BLENDER_TARGET=5.2
@@ -146,7 +153,7 @@ build-rust:   ## Build the Rust slapi_rs crate
 
 .PHONY: clean
 clean:        ## Remove Python/Ruby/Cargo build artifacts
-	rm -rf ../../dist/
+	rm -rf dist/
 	rm -rf .pytest_cache __pycache__
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	cd $(BLENDER_PLUGIN) && rm -rf build/ sketchup.cpp *.so *.egg-info .pytest_cache 2>/dev/null || true
