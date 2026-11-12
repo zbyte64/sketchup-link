@@ -30,12 +30,15 @@ from blender_plugin.live_adapter import fetch_model_json_tcp  # noqa: E402
 
 
 def sync():
+    """Import the live snapshot now, on the main thread, so the scene is updated before
+    the next capture. Calling the timer directly applies the import synchronously."""
     snap = fetch_model_json_tcp(HOST, PORT, False)
     ls._sync_state["conn_config"] = {"mode": "TCP", "host": HOST, "port": PORT, "binary_textures": False}
     ls._sync_state["queue"] = queue.SimpleQueue()
     ls._sync_state["running"] = True
     ls._sync_state["queue"].put(snap)
     ls._sync_timer()
+    print("VCPAIR sync applied", flush=True)
 
 
 def frame_visualcube():
