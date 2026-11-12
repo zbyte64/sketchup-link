@@ -786,6 +786,7 @@ class SceneImporter:
         etype=None,
         parent_name=None,
         parent_location=Vector((0, 0, 0)),
+        source_pid=None,
     ):
         # Check if this is a component that has already been duplicated. We
         # can skip writing this if it is already contained in a duplication
@@ -812,6 +813,8 @@ class SceneImporter:
         if nested_count == 0 or name == "_(Loose Entity)":
             ob = bpy.data.objects.new(name, me)
             ob.matrix_world = parent_transform
+            if isinstance(source_pid, int):
+                ob["skp_persistent_id"] = source_pid
             if 0.01 < alpha < 1.0:
                 ob.show_transparent = True
             if me:
@@ -819,6 +822,8 @@ class SceneImporter:
         else:
             ob = bpy.data.objects.new(name, None)  # empty object to hold group
             ob.matrix_world = parent_transform
+            if isinstance(source_pid, int):
+                ob["skp_persistent_id"] = source_pid
             # ob.hide_viewport = True  # disable empties in viewport
             hide_empty = True
             if me:
@@ -862,6 +867,7 @@ class SceneImporter:
                 etype=EntityType.group,
                 parent_name=ob.name,
                 parent_location=nested_location,
+                source_pid=group.persistent_id,
             )
 
         for instance in entities.instances:
@@ -886,6 +892,7 @@ class SceneImporter:
                 etype=EntityType.component,
                 parent_name=ob.name,
                 parent_location=nested_location,
+                source_pid=instance.persistent_id,
             )
 
     def instance_object_or_group(self, name, default_material):

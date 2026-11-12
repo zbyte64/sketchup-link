@@ -386,6 +386,11 @@ class JsonGroup:
         self._d = d
 
     @property
+    def persistent_id(self):
+        """SketchUp persistent id: the stable identity used to map Blender objects back."""
+        return self._d.get("persistent_id")
+
+    @property
     def name(self):
         return self._d.get("name", "")
 
@@ -415,6 +420,11 @@ class JsonGroup:
 class JsonInstance:
     def __init__(self, d):
         self._d = d
+
+    @property
+    def persistent_id(self):
+        """SketchUp persistent id: the stable identity used to map Blender objects back."""
+        return self._d.get("persistent_id")
 
     @property
     def name(self):
