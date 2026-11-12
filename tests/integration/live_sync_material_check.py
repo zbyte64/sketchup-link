@@ -28,7 +28,10 @@ HOST = os.environ.get("SKETCHUP_LINK_HOST", "127.0.0.1")
 PORT = int(os.environ.get("SKETCHUP_LINK_PORT", "9876"))
 BASE = f"http://{HOST}:{PORT}"
 MATERIAL = "Blue"
-FACTORY = (10, 20, 30)
+# The reference model's Blue (sketchup_link/server.rb create_test_model_from_factories).
+# The baseline must match it: a stale FACTORY made SketchUp look changed by someone else, so
+# the conflict rule rightly dropped the edit.
+FACTORY = (20, 20, 200)
 CHANGED = (200, 50, 50)
 
 
