@@ -15,6 +15,7 @@ from bpy.types import Operator, Panel
 from mathutils import Matrix, Vector
 from .live_adapter import DEFAULT_SOCKET_PATH, JsonModel, fetch_model_json, fetch_model_json_tcp, _build_conn_config
 from .log_config import get_logger
+from .scene_importer import SceneImporter
 
 _logger = get_logger()
 
