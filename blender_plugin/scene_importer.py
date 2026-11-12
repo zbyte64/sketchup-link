@@ -15,29 +15,33 @@ import tempfile
 import time
 from collections import OrderedDict, defaultdict
 
-import bpy
-from bpy.props import (
+# Blender-only modules: unresolved when type-checking outside Blender (false
+# positives). Suppressed narrowly; the bpy property idiom below is the same.
+import bpy  # type: ignore[import-not-found]
+from bpy.props import (  # type: ignore[import-not-found]
     BoolProperty,
     EnumProperty,
     FloatProperty,
     IntProperty,
     StringProperty,
 )
-from bpy.types import AddonPreferences, Operator
-from bpy_extras.io_utils import (
+from bpy.types import AddonPreferences, Operator  # type: ignore[import-not-found]
+from bpy_extras.io_utils import (  # type: ignore[import-not-found]
     ExportHelper,
     ImportHelper,
     unpack_face_list,
     unpack_list,
 )
-from mathutils import Matrix, Quaternion, Vector
+from mathutils import Matrix, Quaternion, Vector  # type: ignore[import-not-found]
 
-# Cython SLAPI bindings — optional, only needed for native .skp file import
+# Cython SLAPI bindings — optional, only needed for native .skp file import.
+# Bind the name to None on failure so it is always defined for type checkers.
 try:
-    from . import sketchup
+    from . import sketchup  # type: ignore[attr-defined]
 
     _has_sketchup = True
 except ImportError:
+    sketchup = None  # type: ignore[assignment]
     _has_sketchup = False
 
 from .skp_util import (
@@ -56,6 +60,46 @@ from .log_config import get_logger
 logger = get_logger()
 
 
+
+
+def _nishita_sky_type():
+    """Return the Sky Texture 'sky_type' id for the Nishita-equivalent model.
+
+    Blender 4.5 exposes 'NISHITA'. Blender 5.2 removed it and replaced it with
+    'MULTIPLE_SCATTERING' (the same multi-scattering atmospheric model). Pick
+    whichever the running Blender actually provides.
+    """
+    import bpy  # type: ignore[import-not-found]
+
+    world = bpy.data.worlds.new("_sky_probe")
+    try:
+        world.use_nodes = True
+        node = world.node_tree.nodes.new("ShaderNodeTexSky")
+        ids = {item.identifier for item in node.bl_rna.properties["sky_type"].enum_items}
+        node.name = "_probe"
+    finally:
+        bpy.data.worlds.remove(world)
+    if "NISHITA" in ids:
+        return "NISHITA"
+    return "MULTIPLE_SCATTERING"
+
+
+def _default_prefs():
+    """Preference values for headless runs where the addon is not registered.
+
+    Mirrors the defaults declared on SketchupAddonPreferences so the values
+    stay in one place. Only the fields SceneImporter reads are provided.
+    """
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        camera_far_plane=250,
+        import_sun_light=True,
+        setup_world_sky=True,
+        world_sky_model="NISHITA",
+        world_strength=1.0,
+        enhance_materials=True,
+    )
 
 
 def create_nested_collection(coll_name):
@@ -128,7 +172,13 @@ class SceneImporter:
         # Log filename being imported
         logger.info(f"Importing: {self.filepath}")
         addon_name = __package__ or __name__.split(".")[0]
-        self.prefs = context.preferences.addons[addon_name].preferences
+        addon_entry = context.preferences.addons.get(addon_name)
+        if addon_entry is not None:
+            self.prefs = addon_entry.preferences
+        else:
+            # Headless run (blender --background) where the addon is not
+            # registered in the preferences registry: use the declared defaults.
+            self.prefs = _default_prefs()
 
         # Open the SketchUp file and access the model using SketchUp API.
         # LiveImportSKP sets self.skp_model before calling load(), so this
@@ -141,7 +191,7 @@ class SceneImporter:
                     "Use live import, or build the Cython extension."
                 )
             try:
-                self.skp_model = sketchup.Model.from_file(self.filepath)
+                self.skp_model = sketchup.Model.from_file(self.filepath)  # type: ignore[union-attr]
             except Exception as e:
                 logger.warning(f"Error reading input file: {self.filepath}: {e}")
                 return {"FINISHED"}
@@ -237,11 +287,6 @@ class SceneImporter:
         if options["dedub_only"]:
             return {"FINISHED"}
 
-        self.write_duplicateable_groups()
-
-        if options["dedub_only"]:
-            return {"FINISHED"}
-
         # self.component_stats = defaultdict(list)
 
         # Start stopwatch for mesh objects import
@@ -321,7 +366,7 @@ class SceneImporter:
         if component_skip is None:
             component_skip = []
         if etype == EntityType.component:
-            component_stats[(name, default_material)].append(transform)
+            component_stats[(name, default_material)].append(transform)  # type: ignore[index]
         for group in entities.groups:
             if self.layers_skip and group.layer in self.layers_skip:
                 continue
@@ -424,15 +469,16 @@ class SceneImporter:
                     temp_dir = tempfile.gettempdir()
                     skp_fname = self.filepath.split(os.path.sep)[-1].split(".")[0]
                     temp_dir += os.path.sep + skp_fname
-                    if not os.path.isdir(temp_dir):
-                        os.mkdir(temp_dir)
+                    os.makedirs(temp_dir, exist_ok=True)
                     temp_file_path = os.path.join(temp_dir, tex_name)
                     # skp_log(f"Texture saved temporarily at {temp_file_path}")
-                    tex.write(temp_file_path)
-                    img = bpy.data.images.load(temp_file_path)
-                    img.pack()
-                    # os.remove(temp_file_path)
-                    shutil.rmtree(temp_dir)
+                    try:
+                        tex.write(temp_file_path)
+                        img = bpy.data.images.load(temp_file_path)
+                        img.pack()
+                    finally:
+                        # os.remove(temp_file_path)
+                        shutil.rmtree(temp_dir, ignore_errors=True)
                     # if self.render_engine == 'CYCLES':
                     #    bmat.use_nodes = True
                     tex_node = nodes.new("ShaderNodeTexImage")
@@ -498,13 +544,14 @@ class SceneImporter:
             temp_dir = tempfile.gettempdir()
             skp_fname = self.filepath.split(os.path.sep)[-1].split(".")[0]
             temp_dir += os.path.sep + skp_fname
-            if not os.path.isdir(temp_dir):
-                os.mkdir(temp_dir)
+            os.makedirs(temp_dir, exist_ok=True)
             temp_file_path = os.path.join(temp_dir, tex_name)
-            tex.write(temp_file_path)
-            img = bpy.data.images.load(temp_file_path)
-            img.pack()
-            shutil.rmtree(temp_dir)
+            try:
+                tex.write(temp_file_path)
+                img = bpy.data.images.load(temp_file_path)
+                img.pack()
+            finally:
+                shutil.rmtree(temp_dir, ignore_errors=True)
             nodes = bmat.node_tree.nodes
             links = bmat.node_tree.links
             if target_input == "Normal":
@@ -548,7 +595,7 @@ class SceneImporter:
         alpha = False
         uvs_used = False
 
-        for f in entities.faces:
+        for f in entities.faces:  # type: ignore[union-attr]
             if f.material:
                 mat_number = mats[f.material.name]
             else:
@@ -822,17 +869,13 @@ class SceneImporter:
             if (name, default_material) in self.component_skip:
                 return
             else:
-                logger.debug(f"Write instance definition as group {group.name} {default_material}")
+                logger.debug(f"Write instance definition as group {group.name} {default_material}")  # type: ignore[union-attr]
                 self.component_skip[(name, default_material)] = True
         if etype == EntityType.component and (name, default_material) in self.component_skip:
             ob = self.instance_object_or_group(name, default_material)
             ob.matrix_world = parent_transform
             self.context.collection.objects.link(ob)
-            try:
-                ob.layers = 18 * [False] + [True] + [False]
-            except Exception:
-                logger.warning("component_def_as_group layer set failed", exc_info=True)
-            group.objects.link(ob)
+            group.objects.link(ob)  # type: ignore[union-attr]
             return
         else:
             me, alpha = self.write_mesh_data(entities=entities, name=name, default_material=default_material)
@@ -843,11 +886,7 @@ class SceneImporter:
                 ob.show_transparent = True
             me.update(calc_edges=True)
             self.context.collection.objects.link(ob)
-            try:
-                ob.layers = 18 * [False] + [True] + [False]
-            except Exception:
-                logger.warning("component_def_as_group layer set failed", exc_info=True)
-            group.objects.link(ob)
+            group.objects.link(ob)  # type: ignore[union-attr]
         for g in entities.groups:
             if self.layers_skip and g.layer in self.layers_skip:
                 continue
@@ -935,18 +974,24 @@ class SceneImporter:
             f_count = 0
             for c in transforms:
                 l_loc, l_rot, _l_scale = Matrix(c).decompose()
-                mat = Matrix.Translation(l_loc) * l_rot.to_matrix().to_4x4()
-                verts.append(Vector((mat * Vector((-0.05, -0.05, 0, 1.0)))[0:3]) - main_loc)
-                verts.append(Vector((mat * Vector((0.05, -0.05, 0, 1.0)))[0:3]) - main_loc)
-                verts.append(Vector((mat * Vector((0.05, 0.05, 0, 1.0)))[0:3]) - main_loc)
-                verts.append(Vector((mat * Vector((-0.05, 0.05, 0, 1.0)))[0:3]) - main_loc)
+                mat = Matrix.Translation(l_loc) @ l_rot.to_matrix().to_4x4()
+                verts.append(Vector((mat @ Vector((-0.05, -0.05, 0, 1.0)))[0:3]) - main_loc)
+                verts.append(Vector((mat @ Vector((0.05, -0.05, 0, 1.0)))[0:3]) - main_loc)
+                verts.append(Vector((mat @ Vector((0.05, 0.05, 0, 1.0)))[0:3]) - main_loc)
+                verts.append(Vector((mat @ Vector((-0.05, 0.05, 0, 1.0)))[0:3]) - main_loc)
                 faces.append((f_count + 0, f_count + 1, f_count + 2, f_count + 3))
                 f_count += 4
             dme = bpy.data.meshes.new("DUPLI-" + name)
             dme.vertices.add(len(verts))
             dme.vertices.foreach_set("co", unpack_list(verts))
-            dme.tessfaces.add(f_count / 4)
-            dme.tessfaces.foreach_set("vertices_raw", unpack_face_list(faces))
+            loop_vert_idx = [idx for face in faces for idx in face]
+            loop_start = [i * 4 for i in range(len(faces))]
+            loop_total = [4] * len(faces)
+            dme.loops.add(len(loop_vert_idx))
+            dme.loops.foreach_set("vertex_index", loop_vert_idx)
+            dme.polygons.add(len(faces))
+            dme.polygons.foreach_set("loop_start", loop_start)
+            dme.polygons.foreach_set("loop_total", loop_total)
             dme.update(calc_edges=True)  # Update mesh with new data
             dme.validate()
             dob = bpy.data.objects.new("DUPLI-" + name, dme)
@@ -1048,11 +1093,12 @@ class SceneImporter:
         output_shader = nodes.new("ShaderNodeOutputWorld")
         output_shader.location = (0, 0)
 
-        if shadow_info and self.prefs.world_sky_model == "NISHITA":
+        sky_type = _nishita_sky_type()
+        if shadow_info and self.prefs.world_sky_model in ("NISHITA", "MULTIPLE_SCATTERING"):
             # Create Nishita sky texture
             sky_node = nodes.new("ShaderNodeTexSky")
             sky_node.location = (-600, 0)
-            sky_node.sky_type = "NISHITA"
+            sky_node.sky_type = sky_type
 
             # Set sun direction from shadow_info
             sun_dir = shadow_info.sun_direction
@@ -1104,40 +1150,40 @@ class ImportSKP(Operator, ImportHelper):
     bl_options = {"PRESET", "REGISTER", "UNDO"}
     filename_ext = ".skp"
 
-    filter_glob: StringProperty(
+    filter_glob: StringProperty(  # type: ignore[valid-type]
         default="*.skp",
         options={"HIDDEN"},
     )
 
-    scenes_as_camera: BoolProperty(
+    scenes_as_camera: BoolProperty(  # type: ignore[valid-type]
         name="Scene(s) As Camera(s)",
         description="Import SketchUp Scenes As Blender Camera.",
         default=True,
     )
 
-    import_camera: BoolProperty(
+    import_camera: BoolProperty(  # type: ignore[valid-type]
         name="Last View In SketchUp As Camera View",
         description="Import last saved view in SketchUp as a Blender Camera.",
         default=False,
     )
 
-    reuse_material: BoolProperty(
+    reuse_material: BoolProperty(  # type: ignore[valid-type]
         name="Use Existing Materials",
         description="Doesn't copy material IDs already in the Blender Scene.",
         default=True,
     )
 
-    dedub_only: BoolProperty(name="Groups Only", description="Import instantiated groups only.", default=False)
+    dedub_only: BoolProperty(name="Groups Only", description="Import instantiated groups only.", default=False)  # type: ignore[valid-type]
 
-    reuse_existing_groups: BoolProperty(
+    reuse_existing_groups: BoolProperty(  # type: ignore[valid-type]
         name="Reuse Groups", description="Use existing Blender groups to instance components with.", default=False
     )
 
     # Altered from initial default of 50 so as to force import all
     # components to be imported as duplicated objects.
-    max_instance: IntProperty(name="Instantiation Threshold :", default=1)
+    max_instance: IntProperty(name="Instantiation Threshold :", default=1)  # type: ignore[valid-type]
 
-    dedub_type: EnumProperty(
+    dedub_type: EnumProperty(  # type: ignore[valid-type]
         name="Instancing Type :",
         items=(
             ("FACE", "Faces", ""),
@@ -1146,7 +1192,7 @@ class ImportSKP(Operator, ImportHelper):
         default="VERTEX",
     )
 
-    import_scene: StringProperty(name="Import A Scene :", description="Import a specific SketchUp Scene", default="")
+    import_scene: StringProperty(name="Import A Scene :", description="Import a specific SketchUp Scene", default="")  # type: ignore[valid-type]
 
     def execute(self, context):
         keywords = self.as_keywords(ignore=("axis_forward", "axis_up", "filter_glob", "split_mode"))
@@ -1190,18 +1236,18 @@ class LiveImportSKP(Operator):
 
 
 
-    scenes_as_camera: BoolProperty(name="Scene(s) As Camera(s)", default=False)
-    import_camera: BoolProperty(name="Last View As Camera", default=False)
-    reuse_material: BoolProperty(name="Use Existing Materials", default=True)
-    dedub_only: BoolProperty(name="Groups Only", default=False)
-    reuse_existing_groups: BoolProperty(name="Reuse Groups", default=False)
-    max_instance: IntProperty(name="Instantiation Threshold", default=1)
-    dedub_type: EnumProperty(
+    scenes_as_camera: BoolProperty(name="Scene(s) As Camera(s)", default=False)  # type: ignore[valid-type]
+    import_camera: BoolProperty(name="Last View As Camera", default=False)  # type: ignore[valid-type]
+    reuse_material: BoolProperty(name="Use Existing Materials", default=True)  # type: ignore[valid-type]
+    dedub_only: BoolProperty(name="Groups Only", default=False)  # type: ignore[valid-type]
+    reuse_existing_groups: BoolProperty(name="Reuse Groups", default=False)  # type: ignore[valid-type]
+    max_instance: IntProperty(name="Instantiation Threshold", default=1)  # type: ignore[valid-type]
+    dedub_type: EnumProperty(  # type: ignore[valid-type]
         name="Instancing Type",
         items=(("FACE", "Faces", ""), ("VERTEX", "Vertices", "")),
         default="VERTEX",
     )
-    import_scene: StringProperty(name="Import A Scene", default="")
+    import_scene: StringProperty(name="Import A Scene", default="")  # type: ignore[valid-type]
 
     def execute(self, context):
         # Read connection config from addon preferences
