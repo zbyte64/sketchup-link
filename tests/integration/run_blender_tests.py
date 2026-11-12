@@ -68,4 +68,8 @@ if "blender_plugin" not in bpy.context.preferences.addons:
 import pytest  # noqa: E402
 
 test_file = os.path.join(_TEST_DIR, "test_blender_import.py")
-sys.exit(pytest.main([test_file, "-v", "-s", "--tb=short"]))
+
+# Extra pytest args may be passed after `--` on the blender command line, e.g.
+#   blender --background --python run_blender_tests.py -- -k Materials
+_extra = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+sys.exit(pytest.main([test_file, "-v", "-s", "--tb=short", *_extra]))

@@ -113,6 +113,13 @@ package-python: ## Build the .zip extension archive for Blender
 release: version-check package package-python ## Run version-check, package, and package-python sequentially
 # ── Docker (Windows 11 VM for SketchUp) ──────────────────────────
 
+.PHONY: test-blender-target
+test-blender-target: ## Run tests in a Blender target image  usage: make test-blender-target BLENDER_TARGET=5.2
+	@if [ -z "$(BLENDER_TARGET)" ]; then echo "Usage: make test-blender-target BLENDER_TARGET=<4.5|5.2>"; exit 1; fi
+	docker run --rm -v $(abspath .):/plugin -w /plugin sketchup-link-blender:$(BLENDER_TARGET) \
+		blender --background --factory-startup --python-exit-code 1 \
+		--python tests/integration/run_blender_tests.py -- $(ARGS)
+
 .PHONY: docker-up docker-down docker-restart docker-logs
 docker-up:    ## Start the Windows 11 VM (Docker Compose)
 	docker compose -f $(DOCKER_COMPOSE) up -d

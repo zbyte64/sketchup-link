@@ -1,0 +1,58 @@
+# syntax=docker/dockerfile:1
+# Blender 5.2 LTS headless image (alternative build target, Python 3.13)
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# System deps for Blender headless (EGL/OpenGL with software rasterizer)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    xz-utils \
+    libxxf86vm1 \
+    libxfixes3 \
+    libxi6 \
+    libxrender1 \
+    libgl1 \
+    libegl1 \
+    libegl-mesa0 \
+    libgl1-mesa-dri \
+    libgles2 \
+    libgomp1 \
+    libxkbcommon0 \
+    libxcb-cursor0 \
+    libsm6 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Download, verify, and extract Blender 5.2.4 (latest 5.2 LTS point release).
+# download.blender.org sits behind a bot challenge (403 to curl), so use the OCF
+# mirror; the SHA-256 is taken from the official blender-5.2.4.sha256 file
+# published alongside the release.
+RUN curl -fsSL "https://mirrors.ocf.berkeley.edu/blender/release/Blender5.2/blender-5.2.4-linux-x64.tar.xz" \
+    -o /tmp/blender.tar.xz \
+    && echo "2fd14c50987426897ba60237ee996edf2b4151f4b1a72a460ca20be58c1d2d86  /tmp/blender.tar.xz" | sha256sum -c - \
+    && tar -xf /tmp/blender.tar.xz -C /opt \
+    && rm /tmp/blender.tar.xz
+
+# Symlink blender binary
+RUN ln -s /opt/blender-5.2.4-linux-x64/blender /usr/local/bin/blender
+
+# Verify the bundled interpreter is Python 3.13, then install test deps into it.
+# Fail the build (rather than silently using another interpreter) on mismatch.
+RUN BPY=/opt/blender-5.2.4-linux-x64/5.2/python/bin/python3.13 \
+    && test -x "$BPY" \
+    && "$BPY" -c 'import sys; assert sys.version_info[:2] == (3, 13), sys.version' \
+    && "$BPY" -m ensurepip \
+    && "$BPY" -m pip install --no-cache-dir \
+        "pytest>=9.0.2" \
+        "pytest-bdd>=8.0.0"
+
+# Verify Blender works
+RUN blender --version
+
+# Copy plugin source into image
+COPY . /plugin
+WORKDIR /plugin
+
+# Default: keep container alive for on-demand executor use
+CMD ["sleep", "infinity"]

@@ -1,0 +1,53 @@
+# syntax=docker/dockerfile:1
+# Blender 4.5 LTS headless image for BDD screenshot tests (Python 3.11 bundled)
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# System deps for Blender headless (EGL/OpenGL with software rasterizer)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    xz-utils \
+    libxxf86vm1 \
+    libxfixes3 \
+    libxi6 \
+    libxrender1 \
+    libgl1 \
+    libegl1 \
+    libegl-mesa0 \
+    libgl1-mesa-dri \
+    libgles2 \
+    libgomp1 \
+    libxkbcommon0 \
+    libxcb-cursor0 \
+    libsm6 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Download, verify, and extract Blender 4.5.16 LTS. download.blender.org sits
+# behind a bot challenge (403 to curl), so use the OCF mirror; the SHA-256 is
+# the official one from blender-4.5.16.sha256 published alongside the release.
+RUN curl -fsSL "https://mirrors.ocf.berkeley.edu/blender/release/Blender4.5/blender-4.5.16-linux-x64.tar.xz" \
+    -o /tmp/blender.tar.xz \
+    && echo "23432b064977908beb1ab4b7f32f024e7331105c875c187dce002aff84b10c11  /tmp/blender.tar.xz" | sha256sum -c - \
+    && tar -xf /tmp/blender.tar.xz -C /opt \
+    && rm /tmp/blender.tar.xz
+
+# Symlink blender binary
+RUN ln -s /opt/blender-4.5.16-linux-x64/blender /usr/local/bin/blender
+
+# Ensure Blender's bundled pip and install test deps (bundled interpreter is 3.11)
+RUN /opt/blender-4.5.16-linux-x64/4.5/python/bin/python3.11 -m ensurepip && \
+    /opt/blender-4.5.16-linux-x64/4.5/python/bin/python3.11 -m pip install --no-cache-dir \
+        "pytest>=9.0.2" \
+        "pytest-bdd>=8.0.0"
+
+# Verify Blender works
+RUN blender --version
+# Copy plugin source into image
+COPY . /plugin
+WORKDIR /plugin
+
+
+# Default: keep container alive for on-demand executor use
+CMD ["sleep", "infinity"]
