@@ -269,6 +269,23 @@ if (Test-Path $launcher) {
 }
 
 # ---------------------------------------------------------------------------
+# Step 6: Enable OpenSSH server (host command channel)
+# Runs last and non-fatally, so an SSH problem never blocks the SketchUp install.
+# ---------------------------------------------------------------------------
+$sshStep = "C:\OEM\enable_ssh.ps1"
+if (Test-Path $sshStep) {
+    try {
+        Log "Enabling OpenSSH server via enable_ssh.ps1..."
+        & powershell.exe -ExecutionPolicy Bypass -NoProfile -File $sshStep
+        Log "  enable_ssh.ps1 finished"
+    } catch {
+        Log "  WARNING: enable_ssh.ps1 failed: $($_.Exception.Message)"
+    }
+} else {
+    Log "  WARNING: enable_ssh.ps1 not found at $sshStep - SSH not enabled"
+}
+
+# ---------------------------------------------------------------------------
 # Done
 # ---------------------------------------------------------------------------
 Log "============================================================"
