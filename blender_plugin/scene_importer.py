@@ -508,18 +508,16 @@ class SceneImporter:
                 default_shader_alpha.default_value = round((a / 255.0), 2)
                 if tex:
                     tex_name = tex.name.split(os.path.sep)[-1]
-                    temp_dir = tempfile.gettempdir()
-                    skp_fname = self.filepath.split(os.path.sep)[-1].split(".")[0]
-                    temp_dir += os.path.sep + skp_fname
-                    os.makedirs(temp_dir, exist_ok=True)
+                    # A private, uniquely-named directory that this import created. Never
+                    # derive it from the file name (empty on live import, which made the
+                    # old path "/tmp/" and let rmtree delete all of /tmp).
+                    temp_dir = tempfile.mkdtemp(prefix="skp_link_tex_")
                     temp_file_path = os.path.join(temp_dir, tex_name)
-                    # skp_log(f"Texture saved temporarily at {temp_file_path}")
                     try:
                         tex.write(temp_file_path)
                         img = bpy.data.images.load(temp_file_path)
                         img.pack()
                     finally:
-                        # os.remove(temp_file_path)
                         shutil.rmtree(temp_dir, ignore_errors=True)
                     # if self.render_engine == 'CYCLES':
                     #    bmat.use_nodes = True
@@ -583,10 +581,8 @@ class SceneImporter:
                 continue
             # Load the companion texture image
             tex_name = tex.name.split(os.path.sep)[-1]
-            temp_dir = tempfile.gettempdir()
-            skp_fname = self.filepath.split(os.path.sep)[-1].split(".")[0]
-            temp_dir += os.path.sep + skp_fname
-            os.makedirs(temp_dir, exist_ok=True)
+            # Private per-import directory; see the matching block above.
+            temp_dir = tempfile.mkdtemp(prefix="skp_link_tex_")
             temp_file_path = os.path.join(temp_dir, tex_name)
             try:
                 tex.write(temp_file_path)

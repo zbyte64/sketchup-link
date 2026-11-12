@@ -69,3 +69,18 @@ def test_dedub_only_early_return_not_duplicated():
                     assert count == 1
                     return
     raise AssertionError("SceneImporter.load not found")
+
+
+def test_texture_cleanup_never_removes_the_system_temp_dir():
+    """Regression: the texture cleanup built its directory from the file name. On live
+    import the file name is empty, so the directory became the system temp dir, and
+    shutil.rmtree deleted all of /tmp (ignore_errors hid it). Every texture cleanup must
+    remove only a directory it created with mkdtemp, never gettempdir() or a name-derived
+    path."""
+    src = _source()
+    # The removed pattern: a temp dir joined with a name derived from the file path.
+    assert "temp_dir += os.path.sep + skp_fname" not in src
+    assert "skp_fname = self.filepath" not in src
+    # Every rmtree of a texture temp dir must target a mkdtemp result.
+    for match in re.finditer(r"temp_dir = (tempfile\.\w+)\(", src):
+        assert match.group(1) == "tempfile.mkdtemp", f"texture temp dir from {match.group(1)}"
