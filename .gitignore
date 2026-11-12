@@ -41,3 +41,6 @@ integration/shared/sketchup_status.json
 
 # Host SSH keypair used to reach the SketchUp VM (private key must never be committed)
 integration/shared/ssh/
+
+# Generated: OEM scripts staged for the guest to copy into C:\OEM (regenerated, not source)
+integration/shared/oem_stage/

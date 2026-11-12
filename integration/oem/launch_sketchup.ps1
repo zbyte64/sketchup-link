@@ -12,6 +12,37 @@
 # Shared folder path (defined first so the breadcrumb below can use it)
 $sharedRoot = "$env:USERPROFILE\Desktop\Shared"
 
+# Sync OEM scripts from the shared folder into C:\OEM on every logon, verifying
+# each copy by SHA-256 against MANIFEST.sha256. The first-logon installer is
+# gated by .install_done and never refreshes C:\OEM, so without this a stale
+# script keeps running. Self-contained: uses only built-in cmdlets, so it works
+# even when the scripts it updates are stale. Non-fatal by design.
+function Sync-OemFromShared {
+    $stage = "$sharedRoot\oem_stage"
+    $manifest = "$stage\MANIFEST.sha256"
+    $report = @()
+    if (-not (Test-Path $manifest)) {
+        return "no manifest at $manifest (staging not present); skipped"
+    }
+    foreach ($line in (Get-Content $manifest)) {
+        $parts = $line -split '\s+', 2
+        if ($parts.Count -ne 2) { continue }
+        $expected = $parts[0].ToLower()
+        $name = $parts[1].Trim()
+        $src = Join-Path $stage $name
+        $dst = Join-Path 'C:\OEM' $name
+        try {
+            Copy-Item -Path $src -Destination $dst -Force
+            $actual = (Get-FileHash -Path $dst -Algorithm SHA256).Hash.ToLower()
+            if ($actual -eq $expected) { $report += "OK $name" }
+            else { $report += "HASH MISMATCH $name (expected $expected got $actual)" }
+        } catch {
+            $report += "FAILED $name ($($_.Exception.Message))"
+        }
+    }
+    return ($report -join '; ')
+}
+
 # Host-visible observability: the host can only read the shared folder, so every
 # run leaves a breadcrumb and a copy of its log there. The breadcrumb is written
 # with a bare Set-Content so it survives even if the rest of the script fails.
@@ -283,6 +314,16 @@ function Wait-For-Plugin {
 Log "============================================================"
 Log "SketchUp auto-start launched"
 Log "============================================================"
+
+# Refresh C:\OEM from the shared staging area BEFORE anything else runs, so the
+# bootstrap and this script always use the current code. Result goes to the
+# shared guest_logs so the host can verify each copy.
+try {
+    $syncResult = Sync-OemFromShared
+    Set-Content -Path "$guestLogDir\oem_sync.txt" -Value ((Get-Date -Format s) + " " + $syncResult)
+} catch {
+    try { Set-Content -Path "$guestLogDir\oem_sync.txt" -Value ("sync crashed: " + $_.Exception.Message) } catch { }
+}
 
 Write-Status -status "starting" -detail "Auto-start script launched"
 
