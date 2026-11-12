@@ -84,3 +84,12 @@ def test_texture_cleanup_never_removes_the_system_temp_dir():
     # Every rmtree of a texture temp dir must target a mkdtemp result.
     for match in re.finditer(r"temp_dir = (tempfile\.\w+)\(", src):
         assert match.group(1) == "tempfile.mkdtemp", f"texture temp dir from {match.group(1)}"
+
+
+def test_existing_material_is_updated_from_snapshot_not_kept():
+    """Regression: the material block created a material only when absent, so a SketchUp
+    colour change never reached a material Blender had already imported. Every sync after the
+    first kept the first colour. An existing material must be updated from the snapshot."""
+    src = _source()
+    assert "_update_existing_material" in src, "existing materials are not updated from the snapshot"
+    assert "self._update_existing_material(bpy.data.materials[name], mat)" in src

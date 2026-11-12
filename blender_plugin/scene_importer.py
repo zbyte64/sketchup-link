@@ -444,6 +444,26 @@ class SceneImporter:
     #
     # Import materials from SketchUp into Blender.
     #
+    @staticmethod
+    def _update_existing_material(bmat, mat):
+        """Set an already-imported material's colour from the snapshot (sRGB to linear).
+
+        Only the colour is updated. Node setup and textures are left as they were, so an
+        existing material keeps its structure and only its colour follows SketchUp.
+        """
+        r, g, b, a = mat.color
+        lin = (
+            math.pow((r / 255.0), 2.2),
+            math.pow((g / 255.0), 2.2),
+            math.pow((b / 255.0), 2.2),
+            round((a / 255.0), 2),
+        )
+        bmat.diffuse_color = lin
+        if bmat.use_nodes and bmat.node_tree:
+            for node in bmat.node_tree.nodes:
+                if node.type == "BSDF_PRINCIPLED":
+                    node.inputs["Base Color"].default_value = lin
+
     def write_materials(self, materials):
         if self.context.scene.render.engine != "CYCLES":
             self.context.scene.render.engine = "CYCLES"
@@ -475,6 +495,11 @@ class SceneImporter:
                 self.materials_scales[name] = mat.texture.dimensions[2:]
             else:
                 self.materials_scales[name] = (1.0, 1.0)
+            # A material that already exists is updated from the snapshot, not kept. The old
+            # code created it only when absent, so a SketchUp colour change never reached a
+            # material Blender had already imported, and every later sync kept the first value.
+            if self.reuse_material and name in bpy.data.materials:
+                self._update_existing_material(bpy.data.materials[name], mat)
             if self.reuse_material and name not in bpy.data.materials:
                 bmat = bpy.data.materials.new(name)
                 r, g, b, a = mat.color
