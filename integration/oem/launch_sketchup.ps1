@@ -346,6 +346,23 @@ Kill-Stale-Processes
 # Step 3: Suppress dialogs
 Ensure-Preferences
 
+# Step 3.2: Deploy the test-VM TCP loader into Plugins. It sets use_tcp=true so the
+# host can reach sketchup_link on 9876 (the product default stays Unix-first).
+# Non-fatal: a failure here must never block the SketchUp launch below.
+try {
+    $pluginsDir = "$env:APPDATA\SketchUp\SketchUp 2025\SketchUp\Plugins"
+    $loaderSrc = "C:\OEM\sketchup_link_testenv.rb"
+    if (Test-Path $loaderSrc) {
+        New-Item -ItemType Directory -Force -Path $pluginsDir | Out-Null
+        Copy-Item $loaderSrc (Join-Path $pluginsDir "sketchup_link_testenv.rb") -Force
+        Log "Deployed test-VM TCP loader to $pluginsDir"
+    } else {
+        Log "WARNING: $loaderSrc not found; sketchup_link stays on the socket (no TCP)"
+    }
+} catch {
+    Log "WARNING: could not deploy TCP loader: $($_.Exception.Message)"
+}
+
 # Step 3.5: One-time SSH bootstrap for VMs built before enable_ssh.ps1 existed.
 # Runs once (marker-guarded), is non-fatal, and leaves no marker on failure so the
 # next logon retries. It can never block the SketchUp launch below.
