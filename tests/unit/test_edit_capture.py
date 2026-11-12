@@ -1,0 +1,76 @@
+"""Unit tests for Blender-side edit capture (blender_plugin/edit_capture.py)."""
+
+from blender_plugin.edit_capture import EditTracker
+
+IDENT = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+MOVED = [1, 0, 0, 0.5, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+RED = (255, 0, 0)
+BLUE = (0, 0, 255)
+
+
+def test_unknown_id_is_not_an_edit():
+    t = EditTracker()
+    assert t.diff(42, MOVED, RED) is None
+
+
+def test_unchanged_since_sync_is_not_an_edit():
+    t = EditTracker()
+    t.record_sync(42, IDENT, RED)
+    assert t.diff(42, IDENT, RED) is None
+
+
+def test_transform_change_is_reported():
+    t = EditTracker()
+    t.record_sync(42, IDENT, RED)
+    e = t.diff(42, MOVED, RED)
+    assert e is not None
+    assert e.fields == {"transform"}
+    assert e.transform == tuple(MOVED)
+    assert e.color is None
+
+
+def test_material_change_is_reported():
+    t = EditTracker()
+    t.record_sync(42, IDENT, RED)
+    e = t.diff(42, IDENT, BLUE)
+    assert e is not None
+    assert e.fields == {"material"}
+    assert e.color == BLUE
+    assert e.transform is None
+
+
+def test_both_fields_reported_together():
+    t = EditTracker()
+    t.record_sync(42, IDENT, RED)
+    e = t.diff(42, MOVED, BLUE)
+    assert e.fields == {"transform", "material"}
+
+
+def test_echo_of_a_pushed_value_is_suppressed():
+    """After a push succeeds we record it as synced; the snapshot that comes back
+    matches, so it must not be re-queued as a new edit."""
+    t = EditTracker()
+    t.record_sync(42, IDENT, RED)
+    t.record_sync(42, MOVED, RED)  # push succeeded
+    assert t.diff(42, MOVED, RED) is None
+
+
+def test_tiny_float_noise_is_not_an_edit():
+    t = EditTracker()
+    t.record_sync(42, IDENT, RED)
+    noisy = [1, 0, 0, 1e-9, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    assert t.diff(42, noisy, RED) is None
+
+
+def test_forget_stops_tracking():
+    t = EditTracker()
+    t.record_sync(42, IDENT, RED)
+    t.forget(42)
+    assert t.diff(42, MOVED, RED) is None
+
+
+def test_none_color_is_handled():
+    t = EditTracker()
+    t.record_sync(42, IDENT, None)
+    assert t.diff(42, IDENT, None) is None
+    assert t.diff(42, IDENT, RED).fields == {"material"}
