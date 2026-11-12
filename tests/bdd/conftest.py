@@ -1281,11 +1281,60 @@ def _mcp_eval(code, timeout=60):
         s.close()
 
 
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_VM_KEY = os.environ.get('SKETCHUP_LINK_VM_KEY', os.path.join(_REPO_ROOT, 'integration', 'shared', 'ssh', 'host_key'))
+_VM_SSH_PORT = int(os.environ.get('VM_SSH_PORT', '2222'))
+_GUEST_MCP_PORT = 9877
+
+
+def _port_open(port):
+    try:
+        socket.create_connection(('127.0.0.1', port), timeout=2).close()
+        return True
+    except OSError:
+        return False
+
+
+def _ensure_mcp_tunnel():
+    """Start the SSH forward to the in-VM MCP server if it is not already up.
+
+    OpenSSH refuses a key owned by another non-root user, and the mounted key belongs to
+    the host user, so the key is copied to a private root-owned file first.
+    """
+    if _port_open(_MCP_LOCAL_PORT):
+        return
+    if not os.path.isfile(_VM_KEY):
+        pytest.fail(f'E2E needs the VM SSH key at {_VM_KEY} (run integration/scripts/ensure_ssh_key.sh)')
+    fd, key_copy = tempfile.mkstemp(prefix='vm_key_')
+    with os.fdopen(fd, 'wb') as out, open(_VM_KEY, 'rb') as src:
+        out.write(src.read())
+    os.chmod(key_copy, 0o600)
+    cmd = ['ssh', '-i', key_copy, '-p', str(_VM_SSH_PORT),
+           '-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=/dev/null',
+           '-o', 'BatchMode=yes', '-o', 'ExitOnForwardFailure=yes',
+           '-f', '-N', '-L', f'127.0.0.1:{_MCP_LOCAL_PORT}:127.0.0.1:{_GUEST_MCP_PORT}',
+           'Docker@127.0.0.1']
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    if proc.returncode != 0 or not _wait_for_port(_MCP_LOCAL_PORT, 10):
+        pytest.fail(f'E2E could not start the MCP tunnel (ssh exit {proc.returncode}): {proc.stderr.strip()}')
+
+
+def _wait_for_port(port, seconds):
+    import time
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        if _port_open(port):
+            return True
+        time.sleep(0.5)
+    return False
+
+
 @pytest.fixture(autouse=True)
 def _reset_live_model(request):
     if E2E_TRANSPORT != 'tcp' or os.environ.get('SKETCHUP_LINK_TEST_RESET', '1') == '0':
         yield
         return
+    _ensure_mcp_tunnel()
     status = _post_json('/control/model/clear', {})
     assert status == 200, f'model reset: clear returned HTTP {status}'
     # The MCP tunnel is a hard requirement for the e2e suite: without it materials

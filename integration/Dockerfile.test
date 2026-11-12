@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     make \
+    openssh-client \
     ruby-full \
     build-essential \
     libxxf86vm1 \

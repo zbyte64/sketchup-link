@@ -1,18 +1,11 @@
-# Keep the Blender build context small: the root is the build context
-# (integration/compose.yml uses context: ..), and the VM disk alone is 64 GB.
+# Keep the build context small and free of root-owned caches and VM state.
 .git
 .venv
-**/__pycache__
-**/*.py[oc]
-**/*.egg-info
+.hypothesis
+.pytest_cache
+.ruby-lsp
 dist
-*.rbz
 integration/vm-storage*
 integration/shared
-/shared
 integration/screenshots
-integration/scripts/diagnostics
-integration/*.png
-integration/*.ppm
 tests/bdd/screenshots
-tests/fuzz/artifacts
