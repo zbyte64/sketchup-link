@@ -216,9 +216,58 @@ def _push_new_meshes(sync_push, bpy):
                 _logger.warning(f"face push failed for {ob.name}", exc_info=True)
         if pids:
             # The object's identity is the first face SketchUp created for it. Recording it as synced
-            # is what stops the next sync from pushing the same polygons again.
+            # is what stops the next sync from pushing the same polygons again. The faces and the
+            # geometry they were built from are kept, so a later vertex edit can replace them.
             ob["skp_persistent_id"] = pids[0]
+            ob["skp_user_faces"] = json.dumps(pids)
+            ob["skp_user_geom"] = _geometry_signature(coords, loops)
             edit_capture.tracker().record_sync(pids[0], tuple(v for row in ob.matrix_basis for v in row),
+                                               None)
+    _replace_modified_meshes(sync_push, bpy)
+
+
+def _geometry_signature(coords, loops):
+    """A stable signature of a mesh's world geometry: the rounded vertex loops, in order."""
+    return json.dumps([[tuple(round(c, 6) for c in coords[i]) for i in loop] for loop in loops])
+
+
+def _replace_modified_meshes(sync_push, bpy):
+    """Delete-and-re-add for a user mesh whose geometry changed since it was pushed.
+
+    The design models a vertex edit as delete-and-re-add: the object's old faces are erased and its
+    current polygons are pushed as new faces, with the first new id written back as its identity.
+    Only objects this module enrolled (they carry skp_user_faces) are touched.
+    """
+    from . import edit_capture, geometry_push
+    cc = _sync_state["conn_config"]
+    for ob in list(bpy.data.objects):
+        if ob.type != "MESH" or "skp_user_faces" not in ob:
+            continue
+        me = ob.data
+        coords = [tuple(ob.matrix_world @ v.co) for v in me.vertices]
+        loops = [list(p.vertices) for p in me.polygons]
+        if _geometry_signature(coords, loops) == ob.get("skp_user_geom"):
+            continue
+        old_pids = [int(p) for p in json.loads(ob["skp_user_faces"])]
+        for pid in old_pids:
+            _push_delete(pid, sync_push)
+            edit_capture.tracker().forget(pid)
+        new_pids = []
+        for face in geometry_push.polygons_to_faces(coords, loops):
+            body = json.dumps(face.body()).encode()
+            req = urllib.request.Request(f"http://{cc['host']}:{cc['port']}/control/geometry/face",
+                                         data=body, method="POST",
+                                         headers={"Content-Type": "application/json"})
+            try:
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    new_pids.append(int(json.loads(r.read())["persistent_id"]))
+            except Exception:
+                _logger.warning(f"re-add push failed for {ob.name}", exc_info=True)
+        if new_pids:
+            ob["skp_persistent_id"] = new_pids[0]
+            ob["skp_user_faces"] = json.dumps(new_pids)
+            ob["skp_user_geom"] = _geometry_signature(coords, loops)
+            edit_capture.tracker().record_sync(new_pids[0], tuple(v for row in ob.matrix_basis for v in row),
                                                None)
 
 
