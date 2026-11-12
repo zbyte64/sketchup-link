@@ -6,8 +6,11 @@ timer drains the queue (keeping the most recent snapshot) and calls
 SceneImporter.load() directly with the queued JSON model.
 """
 
+import json
 import queue
 import threading
+import urllib.error
+import urllib.request
 
 import bpy
 from bpy.props import FloatProperty, StringProperty
@@ -135,6 +138,14 @@ def _push_pending_edits():
         from .live_adapter import fetch_model_json_tcp
         from .sync_push import SketchUpState
 
+        # Deletions made in Blender: a tracked tagged object that no longer exists. Only ids we
+        # synced are considered, so an object we never had cannot be erased by mistake.
+        import bpy  # type: ignore[import-not-found]  # Blender-only module
+        present = {int(o["skp_persistent_id"]) for o in bpy.data.objects if "skp_persistent_id" in o}
+        for pid in edit_capture.removed_ids(set(edit_capture.tracker()._synced.keys()), present):
+            _push_delete(pid, sync_push)
+            edit_capture.tracker().forget(pid)
+
         edits = edit_capture.drain_pending()
         if not edits:
             return
@@ -166,6 +177,28 @@ def _push_pending_edits():
                 _logger.warning(f"push failed: {result.error}")
     except Exception:
         _logger.warning("edit push skipped", exc_info=True)
+
+
+def _push_delete(persistent_id, sync_push):
+    """Erase a SketchUp entity removed in Blender, through /control/geometry/delete.
+
+    SketchUp wins: the delete is sent only if SketchUp still has the entity; a 404 means it is
+    already gone, which is success. Failures are logged and never raised.
+    """
+    cc = _sync_state["conn_config"]
+    body = json.dumps({"persistent_id": persistent_id}).encode()
+    req = urllib.request.Request(f"http://{cc['host']}:{cc['port']}/control/geometry/delete",
+                                 data=body, method="POST", headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            _logger.info(f"erased SketchUp entity {persistent_id} removed in Blender ({r.status})")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            _logger.info(f"SketchUp entity {persistent_id} already gone")
+        else:
+            _logger.warning(f"delete push failed for {persistent_id}: HTTP {e.code}")
+    except Exception:
+        _logger.warning(f"delete push failed for {persistent_id}", exc_info=True)
 
 
 def _post_transform(persistent_id, transformation):
