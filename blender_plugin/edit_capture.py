@@ -164,3 +164,25 @@ def record_import_state() -> None:  # pragma: no cover - needs Blender
     for ob in bpy.data.objects:
         if ID_PROP in ob:
             _tracker.record_sync(int(ob[ID_PROP]), _object_transform(ob), _object_color(ob))
+
+
+# ---------------------------------------------------------------------------
+# Structural edits (milestone 2): deletes and adds. Pure, so they are unit-testable.
+# ---------------------------------------------------------------------------
+
+def removed_ids(tracked: set[int], present: set[int]) -> set[int]:
+    """Ids the tracker knows about that no longer exist in Blender: deletions made in Blender.
+
+    A deleted object is never seen by the depsgraph handler (it no longer exists), so its
+    absence is the only signal. An id is removed only if it was tracked and is now missing.
+    """
+    return {int(pid) for pid in tracked} - {int(pid) for pid in present}
+
+
+def new_polygon_keys(before: set[tuple], after: set[tuple]) -> set[tuple]:
+    """Polygons added in Blender, keyed by their vertex coordinates (rounded).
+
+    A polygon has no SketchUp id until it is pushed, so identity is its geometry. Keys are
+    tuples of rounded (x, y, z) per vertex, made order-independent by sorting.
+    """
+    return after - before

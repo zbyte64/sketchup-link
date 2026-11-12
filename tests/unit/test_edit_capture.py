@@ -74,3 +74,30 @@ def test_none_color_is_handled():
     t.record_sync(42, IDENT, None)
     assert t.diff(42, IDENT, None) is None
     assert t.diff(42, IDENT, RED).fields == {"material"}
+
+
+from blender_plugin.edit_capture import new_polygon_keys, removed_ids  # noqa: E402
+
+
+def test_removed_ids_reports_tracked_ids_that_disappeared():
+    assert removed_ids({1, 2, 3}, {1, 3}) == {2}
+
+
+def test_removed_ids_ignores_new_ids():
+    assert removed_ids({1}, {1, 2, 3}) == set()
+
+
+def test_removed_ids_empty_when_nothing_tracked():
+    assert removed_ids(set(), {1, 2}) == set()
+
+
+def test_new_polygon_keys_are_the_difference():
+    before = {((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0))}
+    after = before | {((0.0, 0.0, 0.0), (2.0, 0.0, 0.0), (0.0, 2.0, 0.0))}
+    assert new_polygon_keys(before, after) == after - before
+    assert len(new_polygon_keys(before, after)) == 1
+
+
+def test_no_new_polygons_when_unchanged():
+    keys = {((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0))}
+    assert new_polygon_keys(keys, keys) == set()
