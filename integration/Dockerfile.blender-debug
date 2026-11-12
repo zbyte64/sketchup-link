@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1
+# Verification layer on a Blender test image: SSH for the host, a virtual X display,
+# and a VNC view, so the Blender GUI can be inspected from outside the container.
+#
+#   docker build -f integration/Dockerfile.blender-debug \
+#     --build-arg BASE=sketchup-link-blender:4.5 -t sketchup-link-blender-debug:4.5 .
+#
+# Key-only SSH: the committed public key (integration/oem/authorized_keys.pub) is the
+# only way in; there is no password login.
+ARG BASE=sketchup-link-blender:4.5
+FROM ${BASE}
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssh-server \
+    xvfb \
+    x11vnc \
+    xauth \
+    && rm -rf /var/lib/apt/lists/*
+
+# Key-only sshd. The host key is generated at build time so the container is
+# self-contained; the client trusts it via StrictHostKeyChecking=no in test tooling.
+RUN ssh-keygen -A \
+    && mkdir -p /root/.ssh && chmod 700 /root/.ssh \
+    && printf 'PermitRootLogin prohibit-password\nPasswordAuthentication no\nPubkeyAuthentication yes\nUsePAM no\n' > /etc/ssh/sshd_config.d/10-key-only.conf
+
+COPY integration/oem/authorized_keys.pub /root/.ssh/authorized_keys
+RUN chmod 600 /root/.ssh/authorized_keys
+
+COPY integration/blender-debug-entrypoint.sh /usr/local/bin/blender-debug-entrypoint
+RUN chmod +x /usr/local/bin/blender-debug-entrypoint
+
+EXPOSE 22 5900
+ENTRYPOINT ["/usr/local/bin/blender-debug-entrypoint"]
+CMD ["sleep", "infinity"]

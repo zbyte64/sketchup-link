@@ -9,3 +9,7 @@ integration/vm-storage*
 integration/shared
 integration/screenshots
 tests/bdd/screenshots
+
+# Python caches written by container runs (often root-owned; unreadable to the build)
+**/__pycache__
+**/*.pyc
