@@ -103,15 +103,23 @@ imported_polys = sum(len(o.data.polygons) for o in meshes)
 imported_verts = sum(len(o.data.vertices) for o in meshes)
 print(f"imported verts={imported_verts} polys={imported_polys}")
 
+# Compare like with like: triangles of the definitions actually placed by the snapshot's
+# top-level instances, against the polygons the importer built for those placements.
+defs = snapshot.get("component_definitions", {})
+placed = {e.get("definition_name") for e in snapshot.get("entities", [])
+          if e.get("type") == "ComponentInstance"}
 source_triangles = 0
-for d in snapshot.get("component_definitions", {}).values():
-    for e in d.get("entities", []):
+for name in placed:
+    for e in defs.get(name, {}).get("entities", []):
         if e.get("type") == "Face":
             source_triangles += len(e.get("triangles", []))
-print(f"source triangles={source_triangles}")
+print(f"placed definitions={sorted(placed)} source triangles={source_triangles}")
 
 if imported_polys == 0:
     fail("imported mesh has zero polygons")
+
+if source_triangles and imported_polys < source_triangles:
+    fail(f"imported polygons {imported_polys} fewer than placed source triangles {source_triangles}")
 
 print("LIVE-IMPORT OK")
 sys.exit(0)
