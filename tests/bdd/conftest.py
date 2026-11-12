@@ -43,6 +43,11 @@ _RENDER_SCREENSHOT_PY = os.path.join(os.path.dirname(__file__), 'render_screensh
 _RENDER_WIREFRAME_PY = os.path.join(os.path.dirname(__file__), 'render_wireframe_screenshot.py')
 _TCP_HOST = '127.0.0.1'
 _TCP_PORT = 9876
+# E2E transport default. The product default stays Unix-first (DEFAULT_USE_TCP=false
+# in sketchup_link/constants.rb). The test environment needs TCP because the host
+# can only reach the SketchUp VM through the published TCP port, so the e2e suite
+# selects TCP unless SKETCHUP_LINK_TEST_TRANSPORT=unix is set.
+E2E_TRANSPORT = os.environ.get('SKETCHUP_LINK_TEST_TRANSPORT', 'tcp').lower()
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +121,7 @@ def _post_control(request, control_path, body):
     Returns (status, response_dict).
     """
     json_body = json.dumps(body) if body is not None else ''
-    mode = getattr(request.node, '_connection_mode', 'unix')
+    mode = getattr(request.node, '_connection_mode', E2E_TRANSPORT)
     if mode == 'tcp':
         host = getattr(request.node, '_tcp_host', _TCP_HOST)
         port = getattr(request.node, '_tcp_port', _TCP_PORT)
@@ -458,7 +463,7 @@ def when_import_via_live_sync(request):
     """Fetch model JSON from the server and store for assertions.
     Supports both Unix socket (CI mode) and TCP (full VM mode).
     """
-    mode = getattr(request.node, '_connection_mode', 'unix')
+    mode = getattr(request.node, '_connection_mode', E2E_TRANSPORT)
     if mode == 'tcp':
         data = _fetch_json_tcp(
             getattr(request.node, '_tcp_host', _TCP_HOST),
@@ -957,7 +962,7 @@ def then_sketchup_screenshot_captured(request, screenshot_dir, no_screenshots):
 
     host = getattr(request.node, '_tcp_host', _TCP_HOST)
     port = getattr(request.node, '_tcp_port', _TCP_PORT)
-    mode = getattr(request.node, '_connection_mode', 'unix')
+    mode = getattr(request.node, '_connection_mode', E2E_TRANSPORT)
 
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutureTimeout
 
