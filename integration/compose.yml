@@ -20,6 +20,7 @@ services:
       - 6123:6123 # VS Code debug port
       - 9876:9876 # TCP port for sketchup-link live sync
       - 2222:22 # guest OpenSSH (host 22 is the host's own sshd)
+      - 9877:9877 # TCP port for the sketchup-mcp server (patched to 9877, see integration/mcp)
     volumes:
       - ./vm-storage:/storage
       - ./shared:/shared
