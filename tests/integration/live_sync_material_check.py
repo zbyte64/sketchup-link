@@ -69,6 +69,12 @@ from blender_plugin import live_sync as ls  # noqa: E402
 from blender_plugin.live_adapter import fetch_model_json_tcp  # noqa: E402
 from blender_plugin.sync_push import SketchUpState, push  # noqa: E402
 
+# Start from the factory colour in SketchUp. Earlier visual runs leave Blue on another colour;
+# left alone, SketchUp then looks changed by someone else and the conflict rule rightly drops
+# the edit. The check sets the baseline itself rather than depend on leftover state.
+if post("/control/material", {"name": MATERIAL, "color": {"r": FACTORY[0], "g": FACTORY[1], "b": FACTORY[2]}}) != 200:
+    fail("could not set the factory colour before the check")
+
 snap = fetch_model_json_tcp(HOST, PORT, False)
 ls._sync_state["queue"] = queue.SimpleQueue()
 ls._sync_state["running"] = True
