@@ -73,14 +73,18 @@ if (-not (Get-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -ErrorAction Silentl
 
 # 4. Install the host's public key for key-based login (administrators use the
 #    system-wide file, not the per-user one)
-$hostKey = 'C:\Users\Docker\Desktop\Shared\ssh\host_key.pub'
+# The public key is committed in the repo (integration/oem/authorized_keys.pub) and
+# staged into C:\OEM by the logon sync, so a fresh VM has it from first boot.
+# The shared-folder copy is a fallback for a key rotated on the host.
+$keySrc = @('C:\OEM\authorized_keys.pub', "$env:USERPROFILE\Desktop\Shared\ssh\host_key.pub") |
+    Where-Object { Test-Path $_ } | Select-Object -First 1
 $authKeys = 'C:\ProgramData\ssh\administrators_authorized_keys'
-if (Test-Path $hostKey) {
-    Copy-Item $hostKey $authKeys -Force
+if ($keySrc) {
+    Copy-Item $keySrc $authKeys -Force
     icacls $authKeys /inheritance:r /grant 'Administrators:F' 'SYSTEM:F' | Out-Null
-    Log "installed host public key to $authKeys"
+    Log "installed authorized key from $keySrc to $authKeys"
 } else {
-    Log "WARNING: no host public key at $hostKey; key login will not work until one is provided"
+    Log 'WARNING: no authorized public key found in C:\OEM or the shared folder; key login disabled'
 }
 
 # 5. Verify - report success only if the server is actually listening
