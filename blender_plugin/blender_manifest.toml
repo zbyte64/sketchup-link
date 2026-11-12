@@ -7,7 +7,7 @@ tagline = "Live sync from SketchUp to Blender + native .skp file import"
 maintainer = "Jason Kraus"
 type = "add-on"
 
-blender_version_min = "4.2.0"
+blender_version_min = "4.5.0"
 
 license = [
   "SPDX:GPL-3.0-or-later",
