@@ -17,6 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb \
     x11vnc \
     xauth \
+    x11-apps \
+    imagemagick \
     && rm -rf /var/lib/apt/lists/*
 
 # Key-only sshd. The host key is generated at build time so the container is
