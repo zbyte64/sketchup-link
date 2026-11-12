@@ -1237,8 +1237,9 @@ def when_stress_mutation_sequence(request):
 # Every scenario starts from the same canonical factory model, so no test can
 # inherit another test's state (e.g. a group translated by the move step).
 # `model/clear` removes geometry but leaves materials, so the reset also purges
-# unused materials through the MCP tunnel when it is reachable. A reset that does
-# not complete fails the test instead of silently running on dirty state.
+# unused materials through the MCP tunnel, which is REQUIRED for testing (not for
+# user installs). A reset that does not complete fails the test instead of silently
+# running on dirty state.
 # Disable with SKETCHUP_LINK_TEST_RESET=0.
 # ---------------------------------------------------------------------------
 
@@ -1287,7 +1288,18 @@ def _reset_live_model(request):
         return
     status = _post_json('/control/model/clear', {})
     assert status == 200, f'model reset: clear returned HTTP {status}'
-    _mcp_eval(_PURGE_MATERIALS)  # best effort: needs the MCP tunnel
+    # The MCP tunnel is a hard requirement for the e2e suite: without it materials
+    # accumulate across tests (Red1, Red2 ...) and colour checks become meaningless.
+    purged = _mcp_eval(_PURGE_MATERIALS)
+    if purged is None:
+        pytest.fail(
+            'E2E requires the MCP tunnel on 127.0.0.1:%d. Start it with '
+            'integration/scripts/mcp_tunnel.sh (MCP server in the VM must be running).'
+            % _MCP_LOCAL_PORT)
+    result = purged.get('result', {})
+    text = (result.get('content') or [{}])[0].get('text')
+    assert not result.get('isError') and text == '0', (
+        f'model reset: material purge incomplete (remaining={text!r}, error={purged.get("error")!r})')
     status = _post_json('/test_model', None)
     assert status == 200, f'model reset: test_model returned HTTP {status}'
     yield
