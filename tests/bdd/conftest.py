@@ -16,6 +16,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import urllib.request
 import re
 
 import threading
@@ -592,7 +593,9 @@ def then_red_material_color_matches(request):
     assert g == 127, f"Textured Red green expected texture average 127, got {g}"
     assert b == 127, f"Textured Red blue expected texture average 127, got {b}"
     assert a == 255, f"Alpha channel expected 255, got {a}"
-    assert math.isclose(_srgb_to_linear(r), 0.723, rel_tol=1e-2), f"Linear R mismatch: {_srgb_to_linear(r)}"
+    # Reported value for the textured Red is the texture average (255), which linearises
+    # to 1.0. The authored 220 is not what SketchUp reports for a textured material.
+    assert math.isclose(_srgb_to_linear(r), 1.0, rel_tol=1e-2), f"Linear R mismatch: {_srgb_to_linear(r)}"
 
 
 @then('the Blue material diffuse color matches the expected sRGB-to-linear conversion')
@@ -1226,3 +1229,81 @@ def when_stress_mutation_sequence(request):
     for path, body in mutations:
         _post_control(request, path, body)
     request.node._imported_model = _fetch_json(_get_socket_path(request))
+
+
+# ---------------------------------------------------------------------------
+# Per-test model reset (TCP / live VM only)
+#
+# Every scenario starts from the same canonical factory model, so no test can
+# inherit another test's state (e.g. a group translated by the move step).
+# `model/clear` removes geometry but leaves materials, so the reset also purges
+# unused materials through the MCP tunnel when it is reachable. A reset that does
+# not complete fails the test instead of silently running on dirty state.
+# Disable with SKETCHUP_LINK_TEST_RESET=0.
+# ---------------------------------------------------------------------------
+
+_MCP_LOCAL_PORT = int(os.environ.get('MCP_LOCAL_PORT', '9878'))
+_PURGE_MATERIALS = (
+    "m = Sketchup.active_model; "
+    "m.materials.to_a.each { |x| m.materials.remove(x) rescue nil }; "
+    "m.materials.count"
+)
+
+
+def _post_json(path, body=None, timeout=60):
+    data = json.dumps(body if body is not None else {}).encode()
+    req = urllib.request.Request(
+        f'http://{_TCP_HOST}:{_TCP_PORT}{path}', data=data, method='POST',
+        headers={'Content-Type': 'application/json'})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.status
+
+
+def _mcp_eval(code, timeout=60):
+    """Run Ruby in SketchUp through the MCP tunnel. Returns None if unreachable."""
+    msg = {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+           'params': {'name': 'eval_ruby', 'arguments': {'code': code}}}
+    try:
+        s = socket.create_connection(('127.0.0.1', _MCP_LOCAL_PORT), timeout=timeout)
+    except OSError:
+        return None
+    try:
+        s.sendall((json.dumps(msg) + '\n').encode())
+        buf = b''
+        while not buf.endswith(b'\n'):
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            buf += chunk
+        return json.loads(buf.decode()) if buf else None
+    finally:
+        s.close()
+
+
+@pytest.fixture(autouse=True)
+def _reset_live_model(request):
+    if E2E_TRANSPORT != 'tcp' or os.environ.get('SKETCHUP_LINK_TEST_RESET', '1') == '0':
+        yield
+        return
+    status = _post_json('/control/model/clear', {})
+    assert status == 200, f'model reset: clear returned HTTP {status}'
+    _mcp_eval(_PURGE_MATERIALS)  # best effort: needs the MCP tunnel
+    status = _post_json('/test_model', None)
+    assert status == 200, f'model reset: test_model returned HTTP {status}'
+    yield
+
+
+@then('the Red material colour is the mutated value')
+def then_red_material_mutated_value(request):
+    """Re-read the live model (not the session-cached snapshot) and check the POSTed colour.
+
+    The shared sRGB-to-linear step reads json_model, which is session-scoped, so it
+    still shows the factory colour after a mutation. This step checks the value the
+    mutation actually set.
+    """
+    model = _fetch_model_for(request, _get_socket_path(request))
+    red = [m for m in model.get('materials', []) if m.get('name') == 'Red']
+    assert len(red) == 1, f"Expected exactly one 'Red' material, got {len(red)}"
+    c = red[0].get('color') or {}
+    got = (c.get('r'), c.get('g'), c.get('b'))
+    assert got == (100, 200, 50), f"Mutated Red colour expected (100, 200, 50), got {got}"

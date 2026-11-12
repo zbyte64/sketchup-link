@@ -19,7 +19,7 @@ Feature: Model Mutation Fuzzing
 
   Scenario: Change material color via mutation
     When I change the Red material color in SketchUp
-    Then the Red material diffuse color matches the expected sRGB-to-linear conversion
+    Then the Red material colour is the mutated value
     And a screenshot is captured
 
   Scenario: Rapid stress mutation sequence
