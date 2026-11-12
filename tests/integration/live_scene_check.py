@@ -74,5 +74,23 @@ for scene in snap.get("scenes", []):
         fail(f"scene '{name}': view direction {tuple(round(v, 4) for v in view_dir.normalized())} "
              f"does not point at stored target (expected {tuple(round(v, 4) for v in want_dir)})")
 
-print(f"LIVE-SCENE OK: position and direction match for scenes {expected}")
+    # Up vector: the camera's local +Y, with the view direction removed, must point along the stored
+    # up. Compare directions only, so the check does not depend on the stored up's length.
+    up_want = Vector(scene["camera"]["up"]).normalized()
+    cam_up = (ob.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))).normalized()
+    if cam_up.dot(up_want) < 1 - 1e-3:
+        fail(f"scene '{name}': camera up {tuple(round(v, 4) for v in cam_up)} "
+             f"does not match stored up {tuple(round(v, 4) for v in up_want)}")
+
+    # Field of view: the importer sets the lens angle to (pi * fov / 180) * aspect_ratio, with the
+    # importer's aspect ratio when the scene's is 0 (dynamic). Check the angle the code actually sets.
+    import math
+    fov = scene["camera"]["fov"]
+    aspect = scene["camera"].get("aspect_ratio") or importer.aspect_ratio
+    want_angle = math.pi * fov / 180 * aspect
+    if abs(ob.data.angle - want_angle) > 1e-3:
+        fail(f"scene '{name}': lens angle {ob.data.angle:.5f} rad does not match stored fov {fov} "
+             f"(expected {want_angle:.5f} rad)")
+
+print(f"LIVE-SCENE OK: position, direction, up and fov match for scenes {expected}")
 sys.exit(0)
