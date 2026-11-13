@@ -18,7 +18,9 @@ sys.path.insert(0, HERE)
 import reference_reset  # noqa: E402
 
 REPO = os.path.normpath(os.path.join(HERE, "..", ".."))
-CHECKS = [
+# The established order runs first; any other live_*_check.py found on disk is appended, so a new check
+# cannot be left out of the runner by forgetting to list it here (the concave check once was).
+_ORDER = [
     "live_import_check", "live_import_attribution_check", "live_delete_check", "live_sync_push_check",
     "live_sync_material_check", "live_scene_check", "live_sync_delete_push_check", "live_timer_delete_check",
     "live_timer_add_check", "live_timer_modify_check", "live_timer_overlap_check",
@@ -26,6 +28,11 @@ CHECKS = [
     "live_complex_import_check", "live_varied_import_check",
     "live_timer_hole_check",
 ]
+_ON_DISK = sorted(f[:-3] for f in os.listdir(HERE) if re.fullmatch(r"live_\w+_check\.py", f))
+CHECKS = [c for c in _ORDER if c in _ON_DISK] + [c for c in _ON_DISK if c not in _ORDER]
+_MISSING = [c for c in _ORDER if c not in _ON_DISK]
+if _MISSING:
+    raise SystemExit(f"run_live_checks: listed checks missing on disk: {_MISSING}")
 OK_LINE = re.compile(r"^LIVE-[A-Z-]+ OK")
 
 
