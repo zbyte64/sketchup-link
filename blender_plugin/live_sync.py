@@ -9,6 +9,7 @@ SceneImporter.load() directly with the queued JSON model.
 import json
 import queue
 import threading
+import time
 import urllib.error
 import urllib.request
 
@@ -40,6 +41,21 @@ _sync_state: dict = {
 }
 
 
+# monotonic time of the last control call sent to SketchUp. A snapshot fetched before it does not show that
+# change yet; importing it would revert the user's edit in Blender until the next poll.
+_last_push = {"t": 0.0}
+
+
+def _note_push():
+    _last_push["t"] = time.monotonic()
+
+
+def _is_stale(snapshot):
+    """True for a snapshot whose fetch started before the last push. Unstamped snapshots count as fresh."""
+    fetched = snapshot.get("_fetched_at") if isinstance(snapshot, dict) else None
+    return fetched is not None and fetched < _last_push["t"]
+
+
 def _poll_loop(
     stop_event: threading.Event,
     q: queue.SimpleQueue,
@@ -50,6 +66,7 @@ def _poll_loop(
     while not stop_event.wait(timeout=interval):
         try:
             _logger.debug(f"Polling SketchUp (interval={interval}s)")
+            fetched_at = time.monotonic()  # stamped at the request's start: anything pushed later is not in it
             if conn_config["mode"] == "UNIX":
                 snapshot = fetch_model_json(conn_config=conn_config)
             else:
@@ -58,6 +75,7 @@ def _poll_loop(
                     conn_config["port"],
                     conn_config.get("binary_textures", False),
                 )
+            snapshot["_fetched_at"] = fetched_at
             q.put(snapshot)
         except Exception:
             _logger.warning("poll failed", exc_info=True)
@@ -100,6 +118,12 @@ def _sync_timer() -> "float | None":
     # Push Blender edits BEFORE importing: the import rebuilds tagged objects, so an edit
     # made since the last sync would otherwise be overwritten before it is sent.
     _push_pending_edits()
+
+    if _is_stale(latest):
+        # Fetched before this pass's pushes: importing it would put back what the user just changed, for one
+        # poll interval. Skip it; the next poll brings SketchUp's state with the pushes applied.
+        _logger.info("skipping a snapshot fetched before the last push")
+        return _next_delay(state)
 
     _logger.info(f"Importing model snapshot (queue had data)")
     try:
@@ -237,6 +261,7 @@ def _push_new_meshes(sync_push, bpy):
                                          headers={"Content-Type": "application/json"})
             try:
                 with urllib.request.urlopen(req, timeout=10) as r:
+                    _note_push()  # after the response: SketchUp has applied it
                     pids.append(int(json.loads(r.read())["persistent_id"]))
             except Exception:
                 _logger.warning(f"face push failed for {ob.name}", exc_info=True)
@@ -369,6 +394,7 @@ def _reshape_changed_faces(ob, sync_push, unchanged=frozenset()):
                                      data=body, method="POST", headers={"Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=10) as r:
+                _note_push()  # after the response: SketchUp has applied it
                 new_pid = int(json.loads(r.read())["persistent_id"])
             for p in polys:
                 layer.data[p.index].value = new_pid
@@ -541,6 +567,7 @@ def _replace_modified_meshes(sync_push, bpy):
                                          headers={"Content-Type": "application/json"})
             try:
                 with urllib.request.urlopen(req, timeout=10) as r:
+                    _note_push()  # after the response: SketchUp has applied it
                     new_pids.append(int(json.loads(r.read())["persistent_id"]))
             except Exception:
                 _logger.warning(f"re-add push failed for {ob.name}", exc_info=True)
@@ -564,6 +591,7 @@ def _push_delete(persistent_id, sync_push):
                                  data=body, method="POST", headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
+            _note_push()  # after the response: SketchUp has applied it
             _logger.info(f"erased SketchUp entity {persistent_id} removed in Blender ({r.status})")
     except urllib.error.HTTPError as e:
         if e.code == 404:
@@ -584,6 +612,7 @@ def _post_transform(persistent_id, transformation):
                       method="POST", headers={"Content-Type": "application/json"})
     try:
         with _ur.urlopen(req, timeout=10) as r:
+            _note_push()  # after the response: SketchUp has applied it
             return r.status
     except Exception:
         return 0
@@ -599,6 +628,7 @@ def _post_material(name, color):
                       method="POST", headers={"Content-Type": "application/json"})
     try:
         with _ur.urlopen(req, timeout=10) as r:
+            _note_push()  # after the response: SketchUp has applied it
             return r.status
     except Exception:
         return 0
