@@ -36,10 +36,19 @@ if _MISSING:
 OK_LINE = re.compile(r"^LIVE-[A-Z-]+ OK")
 
 
+def runs_on_host(check):
+    """A check whose docstring says it "Runs on the host" talks to SketchUp only and needs no Blender."""
+    with open(os.path.join(HERE, f"{check}.py"), encoding="utf-8") as f:
+        return "Runs on the host" in f.read(2000)
+
+
 def run(version, check):
-    cmd = ["docker", "run", "--rm", "--network", "host", "-v", f"{REPO}:/plugin", "-w", "/plugin",
-           f"sketchup-link-blender:{version}", "blender", "--background", "--factory-startup",
-           "--python", f"tests/integration/{check}.py"]
+    if runs_on_host(check):
+        cmd = [sys.executable, os.path.join(HERE, f"{check}.py")]
+    else:
+        cmd = ["docker", "run", "--rm", "--network", "host", "-v", f"{REPO}:/plugin", "-w", "/plugin",
+               f"sketchup-link-blender:{version}", "blender", "--background", "--factory-startup",
+               "--python", f"tests/integration/{check}.py"]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
     verdict = next((ln for ln in proc.stdout.splitlines() if OK_LINE.match(ln)), None)
     passed = proc.returncode == 0 and verdict is not None
