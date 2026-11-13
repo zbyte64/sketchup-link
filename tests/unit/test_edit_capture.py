@@ -125,3 +125,22 @@ def test_a_move_below_the_tolerance_is_not_an_edit():
     t.record_sync(42, IDENT, RED)
     below = [1, 0, 0, TOL / 10, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
     assert t.diff(42, below, RED) is None
+
+
+def test_a_one_step_colour_change_is_captured():
+    """Colour is 0-255 per channel, so the smallest real colour edit is one step on one channel.
+
+    The shared TOL is a fraction of one step, so a one-step change must be captured; an identical colour must
+    not. Without this, a tolerance widened to swallow a one-step change would pass every existing test.
+    """
+    t = EditTracker()
+    t.record_sync(42, IDENT, RED)  # (255, 0, 0)
+    one_step = (254, 0, 0)
+    e = t.diff(42, IDENT, one_step)
+    assert e is not None and "material" in e.fields and e.color == one_step
+
+
+def test_an_identical_colour_is_not_an_edit():
+    t = EditTracker()
+    t.record_sync(42, IDENT, RED)
+    assert t.diff(42, IDENT, (255, 0, 0)) is None
