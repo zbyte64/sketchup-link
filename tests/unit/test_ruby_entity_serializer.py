@@ -53,6 +53,35 @@ class TestEntitySerializer:
         assert result["back_material"] is None
         assert result["layer"] == "Layer0"
 
+    def _back_face(self, material, back_material):
+        return {
+            "persistent_id": 7,
+            "mesh": {"points": [[0, 0, 0], [10, 0, 0], [10, 10, 0]], "polygons": [[1, 2, 3]],
+                     "uvs": [[0, 0], [1, 0], [1, 1]], "back_uvs": [[0.5, 0.5], [2, 0.5], [2, 2]]},
+            "outer_loop": [{"x": 0, "y": 0, "z": 0}, {"x": 10, "y": 0, "z": 0}, {"x": 10, "y": 10, "z": 0}],
+            "material": material,
+            "back_material": back_material,
+            "layer": {"name": "Layer0", "visible": True, "color": [200, 200, 200, 255], "line_width": 1},
+        }
+
+    _TEXTURED = {"name": "Brick", "color": [200, 100, 50, 255], "alpha": 255,
+                 "texture": {"filename": "brick.png", "width": 10, "height": 10}}
+
+    def test_back_only_textured_face_carries_back_uvs(self):
+        """A face painted only on its back imports with the back material, so it needs the back side's UVs."""
+        result = self._run("serialize_face", self._back_face(None, self._TEXTURED))
+        assert result["back_uvs"] == [[0.5, 0.5], [2.0, 0.5], [2.0, 2.0]]
+        assert result["uvs"] == [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]]
+
+    def test_front_painted_face_has_no_back_uvs(self):
+        result = self._run("serialize_face", self._back_face({"name": "Red", "color": [255, 0, 0, 255]},
+                                                             self._TEXTURED))
+        assert "back_uvs" not in result
+
+    def test_untextured_back_material_has_no_back_uvs(self):
+        result = self._run("serialize_face", self._back_face(None, {"name": "Blue", "color": [0, 0, 255, 255]}))
+        assert "back_uvs" not in result
+
     def test_serialize_face_vertices_are_meters(self):
         """Vertex coordinates are multiplied by 0.0254."""
         entity = {

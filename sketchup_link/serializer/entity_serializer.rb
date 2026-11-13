@@ -31,22 +31,17 @@ module SketchupLink
       # Face
       # ------------------------------------------------------------------
       def self.serialize_face(face)
-        mesh = face.mesh(1)  # 1 = UVQFront — tessellates with UV coordinates
+        # A face painted only on its back is imported with its back material (Blender has one material per
+        # polygon), so it needs the back side's UVs as well: 5 = UVQFront | UVQBack.
+        back_textured = face.material.nil? && face.back_material&.texture
+        mesh = face.mesh(back_textured ? 5 : 1)  # 1 = UVQFront — tessellates with UV coordinates
 
         vertices = (1..mesh.count_points).map do |i|
           pt = mesh.point_at(i)
           [pt.x * INCHES_TO_METERS, pt.y * INCHES_TO_METERS, pt.z * INCHES_TO_METERS]
         end
 
-        uvs = (1..mesh.count_points).map do |i|
-          uvq = mesh.uv_at(i, true)  # true = front face
-          if uvq
-            q = uvq.z.zero? ? 1.0 : uvq.z
-            [uvq.x / q, uvq.y / q]
-          else
-            [0.0, 0.0]
-          end
-        end
+        uvs = mesh_uvs(mesh, true)  # true = front face
 
         # polygon_at uses 1-based indices; negative = hidden edge → abs; convert to 0-based
         triangles = (1..mesh.count_polygons).map do |i|
@@ -69,7 +64,20 @@ module SketchupLink
           'material'      => face.material&.name,
           'back_material' => face.back_material&.name,
           'layer'         => face.layer&.name
-        }
+        }.tap { |h| h['back_uvs'] = mesh_uvs(mesh, false) if back_textured }
+      end
+
+      # Per-point UVs of a PolygonMesh for one side, divided through by q (projective UVs).
+      def self.mesh_uvs(mesh, front)
+        (1..mesh.count_points).map do |i|
+          uvq = mesh.uv_at(i, front)
+          if uvq
+            q = uvq.z.zero? ? 1.0 : uvq.z
+            [uvq.x / q, uvq.y / q]
+          else
+            [0.0, 0.0]
+          end
+        end
       end
 
       # ------------------------------------------------------------------

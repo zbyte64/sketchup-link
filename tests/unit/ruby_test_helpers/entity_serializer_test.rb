@@ -54,6 +54,7 @@ module StubBuilders
   def self.build_mesh(data)
     pts   = data['points']   || []
     uvs   = data['uvs']      || []
+    back_uvs = data['back_uvs'] || uvs
     polys = data['polygons'] || []
 
     uvq = Struct.new(:x, :y, :z)
@@ -61,8 +62,8 @@ module StubBuilders
     mesh_obj = Object.new
     mesh_obj.define_singleton_method(:count_points)   { pts.length }
     mesh_obj.define_singleton_method(:point_at)       { |i| Geom::Point3d.new(*pts[i - 1]) }
-    mesh_obj.define_singleton_method(:uv_at) do |i, _front_face|
-      u, v = uvs[i - 1] || [0.0, 0.0]
+    mesh_obj.define_singleton_method(:uv_at) do |i, front_face|
+      u, v = (front_face ? uvs : back_uvs)[i - 1] || [0.0, 0.0]
       uvq.new(u, v, 1.0)
     end
     mesh_obj.define_singleton_method(:count_polygons) { polys.length }
