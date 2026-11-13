@@ -32,9 +32,10 @@ module SketchupLink
       # ------------------------------------------------------------------
       def self.serialize_face(face)
         # A face painted only on its back is imported with its back material (Blender has one material per
-        # polygon), so it needs the back side's UVs as well: 5 = UVQFront | UVQBack.
+        # polygon), so it needs the back side's UVs as well. PolygonMesh flags: 1 = UVQFront, 2 = UVQBack
+        # (4 is Normals; asking for 5 returned all-zero back UVs).
         back_textured = face.material.nil? && face.back_material&.texture
-        mesh = face.mesh(back_textured ? 5 : 1)  # 1 = UVQFront — tessellates with UV coordinates
+        mesh = face.mesh(back_textured ? 3 : 1)  # 1 = UVQFront — tessellates with UV coordinates
 
         vertices = (1..mesh.count_points).map do |i|
           pt = mesh.point_at(i)

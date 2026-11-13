@@ -71,6 +71,8 @@ try:
     back = face.get("back_uvs")
     if not back:
         fail("the snapshot has no back_uvs for a face textured only on its back")
+    if len({tuple(round(x, 6) for x in uv) for uv in back}) < 3:
+        fail(f"the back UVs are degenerate ({back}): SketchUp was not asked for the back side's UVs")
     front = face["uvs"]
     if all(abs(a - b) < 1e-6 for fu, bu in zip(front, back) for a, b in zip(fu, bu)):
         fail("the back UVs equal the front UVs, so this check could not tell them apart")

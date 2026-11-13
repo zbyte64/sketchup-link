@@ -167,7 +167,12 @@ module StubBuilders
 
   def self.build_face(data)
     face = Sketchup::Face.new
-    face.define_singleton_method(:mesh)              { |_| StubBuilders.build_mesh(data['mesh'] || {}) }
+    # Like SketchUp, a mesh only has back UVs when asked for them (flag 2 = UVQBack); otherwise they read 0.
+    face.define_singleton_method(:mesh) do |flags|
+      md = data['mesh'] || {}
+      md = md.merge('back_uvs' => md.fetch('uvs', []).map { [0.0, 0.0] }) if (flags & 2).zero?
+      StubBuilders.build_mesh(md)
+    end
     face.define_singleton_method(:outer_loop)        { StubBuilders.build_loop(data['outer_loop'] || []) }
     face.define_singleton_method(:loops)             { (data['loops'] || []).map { |l| StubBuilders.build_loop(l) } }
     face.define_singleton_method(:material)          { StubBuilders.build_material(data['material']) }
