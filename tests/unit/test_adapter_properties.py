@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from hypothesis import assume, given, strategies as st
 
-from blender_plugin.live_adapter import JsonFace, JsonLayer, _JsonColor, _flat_to_4x4
+from blender_plugin.live_adapter import JsonEntities, JsonFace, JsonLayer, _JsonColor, _flat_to_4x4
 
 _finite_floats = st.floats(allow_nan=False, allow_infinity=False)
 _layer_names = st.text(min_size=1)
@@ -56,3 +56,41 @@ def test_face_back_uvs_absent_is_none():
 
 def test_face_back_uvs_are_tuples_in_point_order():
     assert JsonFace({"back_uvs": [[0.5, 1.0], [2, 3]]}).back_uvs == [(0.5, 1.0), (2, 3)]
+
+
+def _square_face(pid, z=0.0):
+    return {
+        "type": "Face", "persistent_id": pid,
+        "outer_loop": [{"x": 0, "y": 0, "z": z}, {"x": 1, "y": 0, "z": z},
+                       {"x": 1, "y": 1, "z": z}, {"x": 0, "y": 1, "z": z}],
+    }
+
+
+def _edge(a, b, smooth):
+    return {"type": "Edge", "persistent_id": 0, "vertices": [a, b], "smooth": smooth, "soft": smooth,
+            "hidden": False}
+
+
+def _smooth_flags(entities):
+    """GetSmooth() of each face in a JsonEntities list, by persistent id."""
+    return {f.persistent_id: any(e.GetSmooth() for e in f.edges) for f in JsonEntities(entities).faces}
+
+
+def test_face_on_a_smooth_edge_reports_smooth():
+    """A smooth edge on a face's boundary makes the face smooth, as SketchUp's own shading does."""
+    square = _square_face(1)
+    smooth = _edge([1, 0, 0], [1, 1, 0], True)
+    assert _smooth_flags([square, smooth]) == {1: True}
+
+
+def test_face_with_no_smooth_edge_stays_flat():
+    square = _square_face(2)
+    flat = _edge([1, 0, 0], [1, 1, 0], False)
+    assert _smooth_flags([square, flat]) == {2: False}
+
+
+def test_smooth_edge_off_the_boundary_does_not_smooth_the_face():
+    """An edge that is not on this face's boundary must not change its shading."""
+    square = _square_face(3)
+    elsewhere = _edge([5, 5, 0], [6, 5, 0], True)
+    assert _smooth_flags([square, elsewhere]) == {3: False}

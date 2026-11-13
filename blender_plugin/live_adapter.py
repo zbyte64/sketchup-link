@@ -289,10 +289,13 @@ class JsonMaterial:
 # ---------------------------------------------------------------------------
 
 class _JsonEdge:
-    """Minimal edge stub — no smooth data in the JSON snapshot."""
+    """A snapshot edge reduced to what face shading needs: whether it is smooth."""
+
+    def __init__(self, smooth: bool):
+        self._smooth = bool(smooth)
 
     def GetSmooth(self):  # noqa: N802 — matches Cython method name
-        return False
+        return self._smooth
 
 
 class JsonFace:
@@ -345,14 +348,49 @@ class JsonFace:
 
     @property
     def edges(self):
-        # No edge data in the JSON snapshot; write_mesh_data() iterates this
-        # only to check smoothing, so an empty list is a safe fallback.
-        return []
+        """The edges on this face's boundary, for the smoothing check in write_mesh_data().
+
+        A face's JSON has no edge list, so JsonEntities attaches the smooth edges that lie on its boundary
+        (see _attach_edges). Without that a smooth SketchUp curve is imported as flat faces.
+        """
+        return list(self._d.get("_edges", []))
 
 
 # ---------------------------------------------------------------------------
 # Entities container
 # ---------------------------------------------------------------------------
+
+def _attach_edges(face: dict, edges: list) -> dict:
+    """Return the face dict with _edges: the snapshot edges whose both ends lie on the face's outer loop.
+
+    Matching is by the metre coordinates Ruby already emits for both edges and faces (rounded to 1e-6), so
+    no identifier is needed. An edge is on the boundary when its two endpoints are consecutive loop vertices.
+    """
+    loop = face.get("outer_loop") or []
+    if len(loop) < 2 or not edges:
+        return {**face, "_edges": []}
+
+    def key(p):
+        # Loop points are {x,y,z} dicts; edge endpoints are [x,y,z] lists. Both reduce to the same tuple.
+        if isinstance(p, dict):
+            p = (p["x"], p["y"], p["z"])
+        return tuple(round(float(c), 6) for c in p)
+
+    pts = [key(p) for p in loop]
+    boundary = set()
+    for i in range(len(pts)):
+        a, b = pts[i], pts[(i + 1) % len(pts)]
+        boundary.add(frozenset((a, b)))
+    attached = []
+    for e in edges:
+        ends = e.get("vertices") or []
+        if len(ends) != 2:
+            continue
+        pair = frozenset((key(ends[0]), key(ends[1])))
+        if pair in boundary:
+            attached.append(_JsonEdge(e.get("smooth", False)))
+    return {**face, "_edges": attached}
+
 
 class JsonEntities:
     """
@@ -365,7 +403,8 @@ class JsonEntities:
 
     @property
     def faces(self):
-        return [JsonFace(e) for e in self._list if e.get("type") == "Face"]
+        edges = [e for e in self._list if e.get("type") == "Edge"]
+        return [JsonFace(_attach_edges(e, edges)) for e in self._list if e.get("type") == "Face"]
 
     @property
     def groups(self):
