@@ -262,6 +262,12 @@ def _push_pending_edits():
             return SketchUpState()
 
         if not two_way:
+            # Report every dropped edit instead of losing it silently; the next import overwrites the Blender
+            # side, so this is the user's only notice that the edit was not sent.
+            for edit in edits:
+                ob = next((o for o in bpy.data.objects if o.get("skp_persistent_id") == edit.persistent_id), None)
+                name = ob.name if ob is not None else str(edit.persistent_id)
+                sync_push.add_warning(f"{name}: edit not sent to SketchUp (two-way editing is off)")
             edits = []
 
         for edit in edits:
@@ -390,6 +396,12 @@ def _warn_imported_geometry_edits(sync_push, bpy, push=True):
             continue
         if sig != baseline[0]:
             if not push:
+                if not sync_push.may_push_edits(_sync_state.get("two_way_enabled")):
+                    # Two-way editing is off: the edit is dropped, but say so. The baseline is left at the
+                    # imported geometry so the post-import pass sees the rebuild and stays quiet.
+                    sync_push.add_warning(
+                        f"{ob.name}: vertex edit not sent to SketchUp (two-way editing is off)")
+                    continue
                 # Post-import pass: record the baseline only. The change is pushed by the pre-import pass,
                 # so it is never pushed twice in one timer pass.
                 _import_geometry[pid] = (sig, _face_shapes(ob))
