@@ -252,19 +252,42 @@ def _push_new_meshes(sync_push, bpy):
     _replace_modified_meshes(sync_push, bpy)
 
 
-_import_geometry = {}  # SketchUp id -> geometry signature as the import produced it
+_import_geometry = {}  # SketchUp id -> (geometry signature, per-face shapes) as the import produced it
+
+
+def _face_shapes(ob):
+    """Per SketchUp face id, the set of world-space corners of the polygons attributed to it."""
+    layer = ob.data.attributes.get("skp_face_id")
+    if layer is None:
+        return {}
+    shapes = {}
+    for poly in ob.data.polygons:
+        corners = shapes.setdefault(int(layer.data[poly.index].value), set())
+        for i in poly.vertices:
+            corners.add(tuple(round(c, 6) for c in ob.matrix_world @ ob.data.vertices[i].co))
+    return {pid: frozenset(c) for pid, c in shapes.items()}
 
 
 def _warn_imported_geometry_edits(sync_push, bpy, push=True):
-    """Report vertex edits on imported (SketchUp-originated) mesh geometry without pushing them.
+    """Push vertex edits on imported (SketchUp-originated) mesh geometry, face by face, or report them.
 
-    A per-vertex change on an imported face cannot round-trip: the face belongs to a group or component
-    and a replace would lose its identity and context. Transforms on the same object do round-trip
-    (milestone 1). So the edit is kept in Blender and the user is told it was not sent to SketchUp.
+    Each changed face is rebuilt in its own SketchUp owner through /control/geometry/face/reshape (see
+    _reshape_changed_faces). A face that cannot be stored faithfully (concave, or with a hole) is refused,
+    and the user is told the edit was not sent to SketchUp.
     The baseline is the geometry as the import produced it, recorded the first time it is seen.
+
+    Loose top-level geometry imports as one object with no SketchUp id of its own (the model is its owner),
+    but each of its polygons names its SketchUp face in skp_face_id, which is all a reshape needs. It is
+    keyed by object name, which the importer keeps stable ("_(Loose Entity)") across rebuilds.
     """
     for ob in bpy.data.objects:
-        if ob.type != "MESH" or not ob.get("skp_link_import") or "skp_persistent_id" not in ob:
+        if ob.type != "MESH" or not ob.get("skp_link_import"):
+            continue
+        if "skp_persistent_id" in ob:
+            key = int(ob["skp_persistent_id"])
+        elif ob.data.attributes.get("skp_face_id") is not None:
+            key = f"loose:{ob.name}"
+        else:
             continue
         me = ob.data
         coords = [tuple(ob.matrix_world @ v.co) for v in me.vertices]
@@ -272,27 +295,29 @@ def _warn_imported_geometry_edits(sync_push, bpy, push=True):
         sig = _geometry_signature(coords, loops)
         # Keyed by SketchUp id in the tracker, not on the object: every live import rebuilds the tagged
         # objects, so a property on the object would not survive to the next pass.
-        pid = int(ob["skp_persistent_id"])
+        pid = key
         baseline = _import_geometry.get(pid)
         if baseline is None:
-            _import_geometry[pid] = sig
+            _import_geometry[pid] = (sig, _face_shapes(ob))
             continue
-        if sig != baseline:
+        if sig != baseline[0]:
             if not push:
                 # Post-import pass: record the baseline only. The change is pushed by the pre-import pass,
                 # so it is never pushed twice in one timer pass.
-                _import_geometry[pid] = sig
+                _import_geometry[pid] = (sig, _face_shapes(ob))
                 continue
-            if _reshape_changed_faces(ob, sync_push):
-                # Pushed: SketchUp now has the new loop, so the baseline is the new geometry.
-                _import_geometry[pid] = sig
-            else:
+            # Only faces whose own corners moved are reshaped. A reshape rebuilds the face in SketchUp and
+            # gives it a new id, so reshaping the untouched faces of a multi-face object (loose geometry has
+            # many) would churn their identity for nothing.
+            unchanged = {f for f, shape in _face_shapes(ob).items() if baseline[1].get(f) == shape}
+            if not _reshape_changed_faces(ob, sync_push, unchanged):
                 sync_push.add_warning(
                     f"{ob.name}: vertex edit kept in Blender only (could not be pushed to SketchUp)")
-                _import_geometry[pid] = sig
+            # Pushed or refused, the baseline is the new geometry (a reshape writes new ids to the layer).
+            _import_geometry[pid] = (sig, _face_shapes(ob))
 
 
-def _reshape_changed_faces(ob, sync_push):
+def _reshape_changed_faces(ob, sync_push, unchanged=frozenset()):
     """Push the changed loops of an imported object's faces through /control/geometry/face/reshape.
 
     Each Blender polygon names its SketchUp face in the skp_face_id layer. Polygons are grouped by face,
@@ -313,6 +338,8 @@ def _reshape_changed_faces(ob, sync_push):
         by_face.setdefault(int(layer.data[poly.index].value), []).append(poly)
     ok = True
     for face_pid, polys in by_face.items():
+        if face_pid in unchanged:
+            continue
         if face_pid == 0:
             ok = False
             continue
