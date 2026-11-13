@@ -675,10 +675,12 @@ class SceneImporter:
             # a face painted only on its back (common on flipped faces) keeps its colour. The Cython
             # binding has no back_material, hence getattr.
             back = getattr(f, "back_material", None)
+            use_back = False
             if f.material:
                 mat_number = mats[f.material.name]
             elif back and default_material == "DefaultMaterial":
                 mat_number = mats[back.name]
+                use_back = True
             else:
                 mat_number = mats[default_material]
                 if default_material != "DefaultMaterial":
@@ -688,6 +690,10 @@ class SceneImporter:
                         pass
 
             vs, tri, uvs = f.tessfaces
+            back_uvs = getattr(f, "back_uvs", None) if use_back else None
+            if back_uvs and len(back_uvs) == len(uvs):
+                # The back material's texture is placed by the back side's UVs, not the front's.
+                uvs = list(back_uvs)
             num_loops = 0
 
             mapping = {}

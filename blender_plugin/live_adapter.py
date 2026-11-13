@@ -323,6 +323,12 @@ class JsonFace:
         return _NameOnly(name) if name else None
 
     @property
+    def back_uvs(self):
+        """UVs of the back side, per tessellated point; present only for a face textured only on its back."""
+        uvs = self._d.get("back_uvs")
+        return [tuple(u) for u in uvs] if uvs is not None else None
+
+    @property
     def tessfaces(self):
         verts = [tuple(v) for v in self._d.get("vertices", [])]
         tris  = [tuple(t) for t in self._d.get("triangles", [])]

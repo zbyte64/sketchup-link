@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from hypothesis import assume, given, strategies as st
 
-from blender_plugin.live_adapter import JsonLayer, _JsonColor, _flat_to_4x4
+from blender_plugin.live_adapter import JsonFace, JsonLayer, _JsonColor, _flat_to_4x4
 
 _finite_floats = st.floats(allow_nan=False, allow_infinity=False)
 _layer_names = st.text(min_size=1)
@@ -48,3 +48,11 @@ def test_layers_with_same_name_are_equal_and_hash_alike(name, visible_a, visible
 def test_layers_with_different_names_are_not_equal(name_a, name_b):
     assume(name_a != name_b)
     assert JsonLayer({"name": name_a}) != JsonLayer({"name": name_b})
+
+
+def test_face_back_uvs_absent_is_none():
+    assert JsonFace({"uvs": [[0, 0]]}).back_uvs is None
+
+
+def test_face_back_uvs_are_tuples_in_point_order():
+    assert JsonFace({"back_uvs": [[0.5, 1.0], [2, 3]]}).back_uvs == [(0.5, 1.0), (2, 3)]
