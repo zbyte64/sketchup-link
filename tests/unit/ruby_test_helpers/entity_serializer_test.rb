@@ -216,6 +216,7 @@ module StubBuilders
 
   def self.build_instance(data)
     inst = Sketchup::ComponentInstance.new
+    inst.define_singleton_method(:material) { StubBuilders.build_material(data['material']) }
     defn = Sketchup::ComponentDefinition.new
     defn.define_singleton_method(:name) { data['definition_name'] || '' }
     inst.define_singleton_method(:definition)        { defn }

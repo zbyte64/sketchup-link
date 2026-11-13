@@ -120,7 +120,10 @@ module SketchupLink
           'persistent_id'   => persistent_id(instance),
           'definition_name' => instance.definition.name,
           'transformation'  => TransformSerializer.serialize(instance.transformation),
-          'layer'           => instance.layer&.name
+          'layer'           => instance.layer&.name,
+          # The instance's own paint. Unpainted instances take the definition's faces' materials, so this is
+          # nil for them, and the importer falls back to the parent's material as it does for faces.
+          'material'        => instance.material&.name
         }
       end
 

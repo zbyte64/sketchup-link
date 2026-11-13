@@ -227,6 +227,20 @@ class TestEntitySerializer:
 
     # ── ComponentInstance ────────────────────────────────────────────
 
+    def test_serialize_instance_carries_its_own_material(self):
+        """An instance painted in SketchUp exports the paint: the material name, or None when unpainted."""
+        base = {
+            "persistent_id": 55,
+            "definition_name": "ProbeWedge",
+            "transformation": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            "layer": {"name": "Layer0", "visible": True, "color": [200, 200, 200, 255], "line_width": 1},
+        }
+        painted = self._run("serialize_instance", {**base, "material": {"name": "ProbeGreen",
+                            "color": [40, 180, 60, 255], "alpha": 255}})
+        assert painted["material"] == "ProbeGreen"
+        unpainted = self._run("serialize_instance", base)
+        assert unpainted["material"] is None
+
     def test_serialize_instance_structure(self):
         """ComponentInstance serialization includes type, persistent_id, definition_name, transformation, layer."""
         entity = {
