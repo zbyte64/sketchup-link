@@ -61,25 +61,21 @@ def frame_visualcube():
             area.tag_redraw()
 
 
-def wait_for_shaders(timeout=90.0):
-    """Wait until Blender has finished compiling shaders, so a capture shows settled frames.
+SETTLE_SECONDS = float(os.environ.get("VC_SETTLE_SECONDS", "5"))
 
-    A capture taken during "Compiling shaders" shows a half-drawn viewport, which is why
-    the first pair appeared to differ for the wrong reason.
+
+def wait_for_shaders():
+    """A fixed settle delay before a capture. It does NOT verify that shaders have compiled.
+
+    Probed in this environment: Blender exposes no Python API for pending shader compiles, and the viewport
+    never reaches a pixel-stable frame (six captures two seconds apart all differed, both for the whole
+    screen and for the 3D view alone), so no stability signal is available to replace the delay. The delay is
+    a guess. A capture that was taken too early can show a half-drawn frame, and the colour comparison would
+    then report a change for the wrong reason. Treat a pass from this pair as needing the colour change to be
+    large and the before frame to be the factory colour; the comparison checks both.
     """
     import time
-    end = time.time() + timeout
-    while time.time() < end:
-        for w in bpy.context.window_manager.windows:
-            for area in w.screen.areas:
-                if area.type == "VIEW_3D":
-                    txt = area.spaces[0].shading.type
-                    # Redraw and give the compiler a moment; Blender exposes no
-                    # direct "compiling" flag, so settle time is the reliable signal.
-                    area.tag_redraw()
-        time.sleep(5.0)
-        return True
-    return False
+    time.sleep(SETTLE_SECONDS)
 
 
 def capture(path):
