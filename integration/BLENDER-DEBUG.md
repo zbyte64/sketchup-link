@@ -65,3 +65,18 @@ Verified on Blender 4.5.16 and 5.2.4 (captured from the GUI session on :99):
   reference model has zero saved scenes (`pages.count = 0`). Scene sync would transfer nothing
   for the current model and would be untested code, so it is deferred until a test model has
   scenes to exercise it.
+
+## Deciding a VisualCube colour change
+
+`integration/scripts/visualcube_compare.sh` compares two captures of the same framed viewport.
+
+- The cube's own pixels are selected in the **before** frame by colour (near its starting colour).
+- The same pixels are read in the **after** frame, and the fraction that changed colour is reported.
+- A pass needs that fraction to reach `MIN_FRACTION` (default 0.5).
+
+It replaces a single 200x200 window, which could sit on the grid, the gizmo or the background, and could hide
+a partial change inside its average. Verified controls:
+
+- factory blue to red: 99.6% of cube pixels changed, PASS;
+- a frame against itself: 0% changed, FAIL;
+- a partial change (top third of the cube recoloured): 33.9% changed, FAIL at the default threshold.
