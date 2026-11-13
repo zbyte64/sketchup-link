@@ -113,6 +113,19 @@ _warnings: list[str] = []
 MAX_WARNINGS = 20
 
 
+def poll_failure_notice(consecutive_failures: int, notified: bool):
+    """What the poll loop should tell the user about SketchUp connectivity, or None.
+
+    A dead server stops snapshots silently: the panel still says running and the model goes stale with no
+    notice. Three consecutive failures earn one 'dead' notice; a success after that earns one 'recovered'.
+    """
+    if consecutive_failures >= 3 and not notified:
+        return "dead"
+    if consecutive_failures == 0 and notified:
+        return "recovered"
+    return None
+
+
 def may_push_edits(two_way_enabled) -> bool:
     """Whether Blender edits may be pushed into SketchUp. Two-way editing is a toggle set in SketchUp.
 

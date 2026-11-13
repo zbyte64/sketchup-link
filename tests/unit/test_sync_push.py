@@ -228,3 +228,23 @@ def test_deletions_and_additions_respect_the_two_way_gate():
     adds = src.index("_push_new_meshes(sync_push, bpy)")
     assert gate < dels, "the deletion loop runs before the gate"
     assert gate < adds, "new-mesh pushes run before the gate"
+
+
+def test_poll_failure_notice_fires_once_after_three_failures():
+    """A dead SketchUp server must be reported, not just logged: the user sees a stale model otherwise."""
+    from blender_plugin.sync_push import poll_failure_notice
+
+    # below threshold: nothing
+    assert poll_failure_notice(1, notified=False) is None
+    assert poll_failure_notice(2, notified=False) is None
+    # crossing the threshold: exactly one notice
+    assert poll_failure_notice(3, notified=False) == "dead"
+    # already notified: no repeat
+    assert poll_failure_notice(4, notified=True) is None
+
+
+def test_poll_recovery_notice_fires_when_server_returns():
+    from blender_plugin.sync_push import poll_failure_notice
+
+    assert poll_failure_notice(0, notified=True) == "recovered"
+    assert poll_failure_notice(0, notified=False) is None

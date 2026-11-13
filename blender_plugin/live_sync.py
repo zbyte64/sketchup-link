@@ -77,8 +77,27 @@ def _poll_loop(
                 )
             snapshot["_fetched_at"] = fetched_at
             q.put(snapshot)
+            _notify_poll_state(ok=True)
         except Exception:
             _logger.warning("poll failed", exc_info=True)
+            _notify_poll_state(ok=False)
+
+def _notify_poll_state(ok: bool) -> None:
+    """Track consecutive poll failures and tell the user when SketchUp stops or comes back."""
+    from . import sync_push as _sp
+    state = _sync_state
+    if ok:
+        state["poll_failures"] = 0
+        if state.get("poll_notified"):
+            _sp.add_warning("SketchUp is responding again; live sync resumed")
+            state["poll_notified"] = False
+    else:
+        state["poll_failures"] = state.get("poll_failures", 0) + 1
+        if _sp.poll_failure_notice(state["poll_failures"], bool(state.get("poll_notified"))) == "dead":
+            _sp.add_warning("SketchUp stopped responding; the model shown may be stale "
+                            "(live sync keeps retrying)")
+            state["poll_notified"] = True
+
 
 def _snapshot_entity_ids(snapshot):
     """Every SketchUp persistent id the snapshot reports, at any depth (what SketchUp still has)."""
