@@ -48,6 +48,7 @@ def poll():
     """One snapshot, stamped the way _poll_loop stamps it."""
     t = time.monotonic()
     snap = fetch_model_json_tcp(HOST, PORT, False)
+    snap["two_way_enabled"] = True  # this check exercises two-way deletion
     snap["_fetched_at"] = t
     return snap
 

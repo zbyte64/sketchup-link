@@ -197,3 +197,17 @@ def test_two_way_editing_is_off_by_default_and_blocks_pushes():
     assert may_push_edits(two_way_enabled=False) is False
     assert may_push_edits(two_way_enabled=True) is True
     assert may_push_edits(two_way_enabled=None) is False
+
+
+def test_imported_geometry_push_respects_the_two_way_gate():
+    """The every-pass imported-geometry check must push only when two-way editing is on.
+
+    It runs before the per-edit loop, so gating only the loop left face reshapes writing to SketchUp with the
+    toggle off. The call site must pass push=may_push_edits(...) instead of a literal True.
+    """
+    import inspect
+    from blender_plugin import live_sync
+
+    src = inspect.getsource(live_sync._sync_timer)
+    assert "push=True)" not in src, "the every-pass geometry check pushes unconditionally"
+    assert "may_push_edits" in src

@@ -69,7 +69,9 @@ try:
     ls._sync_state["queue"] = queue.SimpleQueue()
 
     def run_timer():
-        ls._sync_state["queue"].put(fetch_model_json_tcp(HOST, PORT, False))
+        _snap = fetch_model_json_tcp(HOST, PORT, False)
+        _snap["two_way_enabled"] = True  # this check exercises two-way editing
+        ls._sync_state["queue"].put(_snap)
         ls._sync_timer()
 
     run_timer()  # import and record the baseline

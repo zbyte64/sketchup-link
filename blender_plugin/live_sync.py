@@ -122,7 +122,9 @@ def _sync_timer() -> "float | None":
     try:
         import bpy  # type: ignore[import-not-found]  # Blender-only module
         from . import sync_push as _sp
-        _warn_imported_geometry_edits(_sp, bpy, push=True)
+        # Two-way editing is a SketchUp toggle; with it off this check still records baselines and
+        # reports edits, but writes nothing back.
+        _warn_imported_geometry_edits(_sp, bpy, push=_sp.may_push_edits(state.get("two_way_enabled")))
     except Exception:
         _logger.warning("imported geometry check skipped", exc_info=True)
 
