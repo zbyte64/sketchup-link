@@ -1256,22 +1256,6 @@ class SceneImporter:
         logger.info("World environment set up")
 
 
-class SceneExporter:
-    def __init__(self):
-        self.filepath = "/tmp/untitled.skp"
-
-    def set_filename(self, filename):
-        self.filepath = filename
-        self.basepath, self.skp_filename = os.path.split(self.filepath)
-        return self
-
-    def save(self, context, **options):
-        # Export does not write a .skp yet. Report that honestly: returning FINISHED here told the user an export
-        # succeeded when no file was produced.
-        logger.error(f"SketchUp export is not implemented; no file was written to {self.filepath}")
-        return {"CANCELLED"}
-
-
 class ImportSKP(Operator, ImportHelper):
     """Load a Trimble SketchUp .skp file"""
 
@@ -1415,19 +1399,6 @@ class LiveImportSKP(Operator):
         layout.prop(self, "import_scene")
 
 
-class ExportSKP(Operator, ExportHelper):
-    """Export .blend into .skp file"""
-
-    bl_idname = "export_scene.skp"
-    bl_label = "Export SKP"
-    bl_options = {"PRESET", "UNDO"}
-    filename_ext = ".skp"
-
-    def execute(self, context):
-        keywords = self.as_keywords()
-        return SceneExporter().set_filename(keywords["filepath"]).save(context, **keywords)
-
-
 def menu_func_import(self, context):
     self.layout.operator(ImportSKP.bl_idname, text="SketchUp (.skp)")
 
@@ -1436,5 +1407,3 @@ def menu_func_live_import(self, context):
     self.layout.operator(LiveImportSKP.bl_idname, text="SketchUp Live (sketchup-link)")
 
 
-def menu_func_export(self, context):
-    self.layout.operator(ExportSKP.bl_idname, text="SketchUp (.skp)")

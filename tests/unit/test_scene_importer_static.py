@@ -140,17 +140,6 @@ def test_named_scene_import_takes_hidden_layers_from_the_model():
     assert "hidden_layers_for_live" in src
 
 
-def test_export_does_not_report_finished_without_writing_a_file():
-    """The export operator must not report success when it writes nothing.
-
-    SceneExporter.save only logs and returns FINISHED; no file is produced, so a user is told an export succeeded
-    when nothing was written. Until export is implemented, save must report that instead of FINISHED.
-    """
-    src = _source()
-    save = src[src.index("class SceneExporter"):src.index("def menu_func_import")]
-    assert '{"FINISHED"}' not in save, "SceneExporter.save reports FINISHED but writes no file"
-
-
 def test_unreadable_file_import_does_not_report_finished():
     """A file the SketchUp reader cannot open must not report a successful import.
 

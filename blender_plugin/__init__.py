@@ -17,7 +17,7 @@ from .live_sync import (
     SketchUpQuickRenderViewport,
 )
 from .preferences import SketchupAddonPreferences
-from .scene_importer import ExportSKP, ImportSKP, LiveImportSKP, menu_func_export, menu_func_import, menu_func_live_import
+from .scene_importer import ImportSKP, LiveImportSKP, menu_func_import, menu_func_live_import
 from . import log_config
 
 
@@ -40,8 +40,6 @@ def register():
     bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
     bpy.utils.register_class(LiveImportSKP)
     bpy.types.TOPBAR_MT_file_import.append(menu_func_live_import)
-    bpy.utils.register_class(ExportSKP)
-    bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
     bpy.utils.register_class(SketchUpStartLiveSync)
     bpy.utils.register_class(SketchUpStopLiveSync)
     bpy.utils.register_class(SketchUpClearSyncWarnings)
@@ -70,8 +68,6 @@ def unregister():
     bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
     bpy.utils.unregister_class(LiveImportSKP)
     bpy.types.TOPBAR_MT_file_import.remove(menu_func_live_import)
-    bpy.utils.unregister_class(ExportSKP)
-    bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
     bpy.utils.unregister_class(SketchUpStartLiveSync)
     bpy.utils.unregister_class(SketchUpStopLiveSync)
     bpy.utils.unregister_class(SketchUpClearSyncWarnings)
