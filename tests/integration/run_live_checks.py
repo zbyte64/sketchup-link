@@ -23,7 +23,7 @@ CHECKS = [
     "live_sync_material_check", "live_scene_check", "live_sync_delete_push_check", "live_timer_delete_check",
     "live_timer_add_check", "live_timer_modify_check", "live_timer_overlap_check",
     "live_timer_imported_edit_check", "live_timer_reshape_check", "live_timer_conflict_check",
-    "live_complex_import_check",
+    "live_complex_import_check", "live_varied_import_check",
 ]
 OK_LINE = re.compile(r"^LIVE-[A-Z-]+ OK")
 
