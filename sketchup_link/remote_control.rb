@@ -454,10 +454,10 @@ module SketchupLink
         face = find_face_recursive(model, pid)
         return [404, { 'error' => "face not found: pid=#{pid}" }] unless face
 
-        # A face's parent is either an Entities collection or a ComponentDefinition. Only Entities can add a
-        # face, so a definition is resolved to its entities.
+        # A face's parent is a ComponentDefinition (inside a group or component) or, for loose top-level
+        # geometry, the Model itself. Neither can add a face; their entities can.
         parent = face.parent
-        owner = parent.is_a?(Sketchup::ComponentDefinition) ? parent.entities : parent
+        owner = parent.respond_to?(:entities) ? parent.entities : parent
         inch_points = points.map { |pt| meter_point_to_inches(pt) }
         material = face.material
         back_material = face.back_material
