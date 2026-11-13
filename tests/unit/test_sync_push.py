@@ -118,3 +118,26 @@ def test_generic_push_failure_keeps_the_plain_message():
     msg = sp.conflict_warning("Loose Entity", stale=False)
     assert "could not be pushed" in msg
     assert "SketchUp changed" not in msg
+
+
+def test_a_skipped_error_entity_is_reported_to_the_user():
+    """An entity SketchUp could not serialize arrives as {type: 'Error'} and is dropped from the Blender model.
+
+    The drop must be visible to the Blender user, not only in SketchUp's log: a model missing a part with no
+    warning looks complete. Reporting it is the adapter's job, since it is where the entity is filtered.
+    """
+    from blender_plugin.live_adapter import skipped_entity_warnings
+
+    snap_entities = [
+        {"type": "Face", "persistent_id": 1, "outer_loop": []},
+        {"type": "Error", "message": "boom", "persistent_id": None},
+    ]
+    warnings = skipped_entity_warnings(snap_entities)
+    assert len(warnings) == 1
+    assert "could not be read" in warnings[0] and "boom" in warnings[0]
+
+
+def test_no_warning_when_every_entity_is_understood():
+    from blender_plugin.live_adapter import skipped_entity_warnings
+
+    assert skipped_entity_warnings([{"type": "Face", "persistent_id": 1, "outer_loop": []}]) == []

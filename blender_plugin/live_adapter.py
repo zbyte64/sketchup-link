@@ -411,6 +411,30 @@ def _attach_edges(face: dict, table: dict) -> dict:
     return {**face, "_edges": attached}
 
 
+# Entity types the importer models. Anything else (for example the 'Error' entry the Ruby serializer writes when an
+# entity cannot be serialized) is not imported; skipped_entity_warnings reports it so the drop is not silent.
+_UNDERSTOOD_TYPES = {"Face", "Edge", "Group", "ComponentInstance"}
+
+
+def skipped_entity_warnings(entities: list) -> list:
+    """One warning per entity the importer cannot read, so a failed entity is visible to the Blender user.
+
+    The Ruby serializer records a failure only in SketchUp's log; the Blender model would otherwise just lack the
+    entity with no sign it was ever there. The message names the cause when the entity carries one.
+    """
+    out = []
+    for e in entities or []:
+        kind = e.get("type")
+        if kind in _UNDERSTOOD_TYPES:
+            continue
+        if kind == "Error":
+            why = e.get("message") or "unknown error"
+            out.append(f"An entity could not be read from SketchUp and was not imported: {why}")
+        else:
+            out.append(f"An entity of type {kind!r} is not supported and was not imported")
+    return out
+
+
 class JsonEntities:
     """
     Wraps the entities list from the JSON. Exposes .faces, .groups,

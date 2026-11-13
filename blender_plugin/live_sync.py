@@ -130,6 +130,12 @@ def _sync_timer() -> "float | None":
         importer = SceneImporter()
         importer.set_filename("")
         importer.skp_model = JsonModel(latest)
+        # Entities the importer cannot read are dropped from the model; say so, so the user is not left with a
+        # part missing and no sign it was ever there.
+        from . import sync_push as _sp_skip
+        from .live_adapter import skipped_entity_warnings
+        for _w in skipped_entity_warnings(latest.get("entities", [])):
+            _sp_skip.add_warning(_w)
 
         options = dict(
             filepath="",
