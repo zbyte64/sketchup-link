@@ -432,7 +432,17 @@ class JsonEntities:
 
     @property
     def instances(self):
-        return [JsonInstance(e, self._definitions) for e in self._list if e.get("type") == "ComponentInstance"]
+        # An instance whose definition is not in the snapshot is malformed (the serializer emits every definition it
+        # references). It is left out rather than offered as a name-only stub, which would crash the depth analysis.
+        out = []
+        for e in self._list:
+            if e.get("type") != "ComponentInstance":
+                continue
+            inst = JsonInstance(e, self._definitions)
+            if isinstance(inst.definition, _NameOnly):
+                continue
+            out.append(inst)
+        return out
 
     def __iter__(self):
         return iter(self._list)

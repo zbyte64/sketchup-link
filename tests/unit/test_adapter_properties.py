@@ -149,3 +149,18 @@ def test_nested_instance_definition_exposes_its_entities():
     inst = JsonInstance({"type": "ComponentInstance", "definition_name": "Leaf"}, definitions=defs)
     assert hasattr(inst.definition, "entities")
     assert [f.persistent_id for f in JsonEntities(inst.definition.entities).faces] == [9]
+
+
+def test_instance_with_missing_definition_is_skipped_not_crashing():
+    """A component instance whose definition is absent from the snapshot must not poison the depth analysis.
+
+    An instance returning a name-only stub with no entities makes component_deps raise AttributeError and
+    reject the whole live sync. Such an instance is malformed (the serializer emits every definition it
+    references), so it is skipped as an instance, not allowed to crash the import.
+    """
+    from blender_plugin.live_adapter import JsonEntities
+    ghost = {"type": "ComponentInstance", "definition_name": "Ghost",
+             "transformation": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]}
+    ents = JsonEntities([ghost], definitions={})
+    # Skipped: no instance is offered for the depth analysis to recurse into.
+    assert ents.instances == []
