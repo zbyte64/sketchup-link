@@ -26,40 +26,8 @@ trap 'rm -f "$bytes_b" "$bytes_a"' EXIT
 raw "$BEFORE" > "$bytes_b"
 raw "$AFTER" > "$bytes_a"
 
-result="$(python3 - "$bytes_b" "$bytes_a" "$CUBE_RGB" "$CUBE_TOL" "$MIN_SHIFT" "$MIN_CUBE_PIXELS" <<'PY'
-import sys
-before = open(sys.argv[1], 'rb').read()
-after = open(sys.argv[2], 'rb').read()
-cube = [int(v) for v in sys.argv[3].split()]
-tol = int(sys.argv[4]); shift = int(sys.argv[5])
-if len(before) != len(after) or len(before) % 3:
-    print("ERROR captures differ in size", file=sys.stderr); sys.exit(2)
-cube_px = changed = 0
-for i in range(0, len(before), 3):
-    b = before[i:i+3]
-    if all(abs(b[c] - cube[c]) <= tol for c in range(3)):
-        cube_px += 1
-        a = after[i:i+3]
-        if max(abs(a[c] - b[c]) for c in range(3)) >= shift:
-            changed += 1
-# A before frame must show the cube at a usable size. Too few cube pixels means the frame does not show the
-# starting cube (half drawn, wrong view, or no cube), and a fraction computed from them means nothing.
-MIN_CUBE_PIXELS = int(sys.argv[6]) if len(sys.argv) > 6 else 5000
-if cube_px < MIN_CUBE_PIXELS:
-    print(f"ERROR only {cube_px} cube pixels in the before frame (need at least {MIN_CUBE_PIXELS}): "
-          f"the frame does not show the starting cube", file=sys.stderr); sys.exit(2)
-# The before frame must be the cube's known starting colour. A frame captured before the viewport finished
-# drawing shows the cube in another colour or only partly, and would make a change look like a pass.
-import statistics
-mean_before = [statistics.fmean(before[i+c] for i in range(0, len(before), 3)
-                                if all(abs(before[i+k]-cube[k]) <= tol for k in range(3))) for c in range(3)]
-drift = max(abs(mean_before[c] - cube[c]) for c in range(3))
-if drift > tol:
-    print(f"ERROR before frame cube colour {tuple(round(v) for v in mean_before)} is not the starting colour "
-          f"{tuple(cube)} (drift {drift:.0f} > {tol}): the frame may be half drawn", file=sys.stderr); sys.exit(2)
-print(f"{cube_px} {changed} {changed / cube_px:.4f}")
-PY
-)"
+# The decision lives in visual_compare.py, shared with the in-Blender GUI check.
+result="$(python3 "$(dirname "$0")/visual_compare.py" "$bytes_b" "$bytes_a" "$CUBE_RGB" "$CUBE_TOL" "$MIN_SHIFT" "$MIN_CUBE_PIXELS")"
 read -r cube_px changed fraction <<< "$result"
 echo "cube pixels in the before frame: $cube_px"
 echo "of those, changed colour in the after frame: $changed (fraction $fraction, need >= $MIN_FRACTION)"
