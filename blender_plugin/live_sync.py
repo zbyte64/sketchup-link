@@ -309,7 +309,12 @@ def _warn_imported_geometry_edits(sync_push, bpy, push=True):
             # Only faces whose own corners moved are reshaped. A reshape rebuilds the face in SketchUp and
             # gives it a new id, so reshaping the untouched faces of a multi-face object (loose geometry has
             # many) would churn their identity for nothing.
-            unchanged = {f for f, shape in _face_shapes(ob).items() if baseline[1].get(f) == shape}
+            shapes = _face_shapes(ob)
+            unchanged = {f for f, shape in shapes.items() if baseline[1].get(f) == shape}
+            # A face whose polygons were all deleted in Blender is erased in SketchUp; otherwise the next
+            # import would rebuild it and the delete would be silently undone.
+            for gone in sorted(set(baseline[1]) - set(shapes) - {0}):
+                _push_delete(gone, sync_push)
             if not _reshape_changed_faces(ob, sync_push, unchanged):
                 sync_push.add_warning(
                     f"{ob.name}: vertex edit kept in Blender only (could not be pushed to SketchUp)")
