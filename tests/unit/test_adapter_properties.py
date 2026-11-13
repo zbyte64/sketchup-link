@@ -230,3 +230,26 @@ def test_every_snapshot_attribute_the_importer_reads_exists_on_the_adapter():
         cls = getattr(la, cls_name)
         missing = [a for a in attrs if not hasattr(cls, a)]
         assert not missing, f"{cls_name} lacks {missing}, which the importer reads"
+
+
+def test_camera_view_matrix_normal_case():
+    """The SketchUp camera -> Blender view math is pure and must be testable without bpy."""
+    from blender_plugin.live_adapter import camera_view_matrix
+
+    m = camera_view_matrix((0.0, 0.0, 5.0), (0.0, 0.0, 0.0), (0.0, 1.0, 0.0))
+    assert m is not None
+    assert len(m) == 4 and len(m[0]) == 4
+    # camera sits at pos looking at target: translation row is the position
+    assert [round(v, 6) for v in (m[0][3], m[1][3], m[2][3])] == [0.0, 0.0, 5.0]
+
+
+def test_camera_view_matrix_degenerate_returns_none_not_crash():
+    """up parallel to the view direction, or pos==target, must return None.
+
+    The old code normalized a zero cross product and raised; the timer swallowed it at debug level, so
+    follow-viewport silently did nothing. A pure function can return None instead.
+    """
+    from blender_plugin.live_adapter import camera_view_matrix
+
+    assert camera_view_matrix((0.0, 0.0, 5.0), (0.0, 0.0, 0.0), (0.0, 0.0, 1.0)) is None  # up parallel to view
+    assert camera_view_matrix((1.0, 1.0, 1.0), (1.0, 1.0, 1.0), (0.0, 1.0, 0.0)) is None  # pos == target

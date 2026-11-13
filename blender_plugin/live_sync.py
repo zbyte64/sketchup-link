@@ -727,25 +727,14 @@ def _next_delay(state: dict) -> float:
 def _apply_viewport(camera):
     """Set the active 3D viewport to match the SketchUp camera."""
     pos, target, up = camera.GetOrientation()
-    if pos == target:
-        return  # degenerate, skip
-
-    z = Vector(pos) - Vector(target)  # direction from target to camera
-    x = Vector(up).cross(z)
-    y = z.cross(x)
-    x.normalize()
-    y.normalize()
-    z.normalize()
-
-    # Build view matrix from axes
+    # The math is pure in live_adapter (unit-testable, and it returns None on a degenerate view instead of
+    # raising on a zero cross product, which the timer used to swallow at debug level).
+    from .live_adapter import camera_view_matrix
+    m = camera_view_matrix(pos, target, up)
+    if m is None:
+        return
     # region_3d.view_matrix is the inverse of the camera world matrix
-    m = Matrix((
-        (x.x, y.x, z.x, pos[0]),
-        (x.y, y.y, z.y, pos[1]),
-        (x.z, y.z, z.z, pos[2]),
-        (0,   0,   0,  1),
-    ))
-    view_matrix = m.inverted()
+    view_matrix = Matrix(m).inverted()
 
     for area in bpy.context.screen.areas:
         if area.type == "VIEW_3D":

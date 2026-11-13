@@ -416,6 +416,35 @@ def _attach_edges(face: dict, table: dict) -> dict:
 _UNDERSTOOD_TYPES = {"Face", "Edge", "Group", "ComponentInstance"}
 
 
+def camera_view_matrix(pos, target, up):
+    """The SketchUp camera's world matrix as nested rows, or None when the view is degenerate.
+
+    Pure (no bpy, no mathutils) so the follow-viewport math is unit-testable. The old inline version
+    normalized a zero cross product when up was parallel to the view direction and raised; the timer
+    swallowed that at debug level, so following silently did nothing.
+    """
+    import math
+
+    p = [float(v) for v in pos]
+    t = [float(v) for v in target]
+    u = [float(v) for v in up]
+    z = [p[0] - t[0], p[1] - t[1], p[2] - t[2]]
+    zl = math.sqrt(sum(c * c for c in z))
+    if zl == 0.0:
+        return None  # pos == target: no view direction
+    z = [c / zl for c in z]
+    x = [u[1] * z[2] - u[2] * z[1], u[2] * z[0] - u[0] * z[2], u[0] * z[1] - u[1] * z[0]]
+    xl = math.sqrt(sum(c * c for c in x))
+    if xl < 1e-12:
+        return None  # up parallel to the view direction
+    x = [c / xl for c in x]
+    y = [z[1] * x[2] - z[2] * x[1], z[2] * x[0] - z[0] * x[2], z[0] * x[1] - z[1] * x[0]]
+    return [[x[0], y[0], z[0], p[0]],
+            [x[1], y[1], z[1], p[1]],
+            [x[2], y[2], z[2], p[2]],
+            [0.0, 0.0, 0.0, 1.0]]
+
+
 def skipped_entity_warnings(entities: list) -> list:
     """One warning per entity the importer cannot read, so a failed entity is visible to the Blender user.
 
