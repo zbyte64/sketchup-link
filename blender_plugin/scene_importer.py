@@ -177,6 +177,18 @@ def hide_one_level():
     # context.view_layer.update()
 
 
+def material_alpha(mat, colour_alpha):
+    """Opacity to apply to an imported material, from 0 (clear) to 1 (opaque).
+
+    SketchUp keeps a material's translucency in its opacity (0..1). The colour's alpha channel is 255 for
+    SketchUp materials, so it is only a fallback for a snapshot without an opacity value.
+    """
+    opacity = getattr(mat, "opacity", None)
+    if opacity is None:
+        return round(colour_alpha / 255.0, 2)
+    return round(min(max(float(opacity), 0.0), 1.0), 2)
+
+
 class SceneImporter:
     def __init__(self):
         self.filepath = "/tmp/untitled.skp"
@@ -514,14 +526,17 @@ class SceneImporter:
                 bmat = bpy.data.materials.new(name)
                 r, g, b, a = mat.color
                 tex = mat.texture
+                # SketchUp's translucency is the material's opacity (0..1), not its colour alpha, which is
+                # always 255. Use opacity when the snapshot has it; fall back to the colour alpha otherwise.
+                alpha = material_alpha(mat, a)
                 bmat.diffuse_color = (
                     math.pow((r / 255.0), 2.2),
                     math.pow((g / 255.0), 2.2),
                     math.pow((b / 255.0), 2.2),
-                    round((a / 255.0), 2),
+                    alpha,
                 )  # sRGB to Linear
 
-                if round((a / 255.0), 2) < 1:
+                if alpha < 1:
                     bmat.blend_method = "BLEND"
                     
                 if bpy.app.version < (6, 0, 0):
@@ -540,7 +555,7 @@ class SceneImporter:
                 default_shader_base_color = default_shader.inputs["Base Color"]
                 default_shader_base_color.default_value = bmat.diffuse_color
                 default_shader_alpha = default_shader.inputs["Alpha"]
-                default_shader_alpha.default_value = round((a / 255.0), 2)
+                default_shader_alpha.default_value = alpha
                 if tex:
                     tex_name = tex.name.split(os.path.sep)[-1]
                     # A private, uniquely-named directory that this import created. Never

@@ -93,3 +93,36 @@ def test_existing_material_is_updated_from_snapshot_not_kept():
     src = _source()
     assert "_update_existing_material" in src, "existing materials are not updated from the snapshot"
     assert "self._update_existing_material(bpy.data.materials[name], mat)" in src
+
+
+def _material_alpha():
+    """Load material_alpha from the importer source alone (the module imports bpy, which tests lack)."""
+    tree = ast.parse(_source())
+    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "material_alpha")
+    ns: dict = {}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), "<material_alpha>", "exec"), ns)
+    return ns["material_alpha"]
+
+
+class _Mat:
+    def __init__(self, opacity=None):
+        if opacity is not None:
+            self.opacity = opacity
+
+
+def test_material_alpha_uses_opacity_for_translucent_glass():
+    """SketchUp keeps translucency in opacity (0..1); the colour alpha is 255. Glass at 0.4 must import at 0.4."""
+    assert _material_alpha()(_Mat(0.4), 255) == 0.4
+
+
+def test_material_alpha_opaque_when_opacity_is_one():
+    assert _material_alpha()(_Mat(1.0), 255) == 1.0
+
+
+def test_material_alpha_falls_back_to_colour_alpha_without_opacity():
+    assert _material_alpha()(_Mat(), 128) == round(128 / 255.0, 2)
+
+
+def test_material_alpha_clamps_out_of_range_opacity():
+    assert _material_alpha()(_Mat(1.7), 255) == 1.0
+    assert _material_alpha()(_Mat(-0.2), 255) == 0.0
