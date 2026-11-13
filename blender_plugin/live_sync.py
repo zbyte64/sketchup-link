@@ -185,7 +185,11 @@ def _push_pending_edits():
                                             _sync_state["conn_config"]["port"], False)
             for e in snapshot.get("entities", []):
                 if e.get("persistent_id") == pid:
-                    return SketchUpState(transform=tuple(e["transformation"]), color=None)
+                    # Only entities that carry a transform report one (a face does not). A missing
+                    # transform is reported as unknown, not raised: a KeyError here dropped the whole push.
+                    transform = e.get("transformation")
+                    return SketchUpState(transform=tuple(transform) if transform is not None else None,
+                                         color=None)
             return SketchUpState()
 
         for edit in edits:
