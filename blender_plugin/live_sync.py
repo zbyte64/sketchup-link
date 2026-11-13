@@ -80,6 +80,20 @@ def _poll_loop(
         except Exception:
             _logger.warning("poll failed", exc_info=True)
 
+def _snapshot_entity_ids(snapshot):
+    """Every SketchUp persistent id the snapshot reports, at any depth (what SketchUp still has)."""
+    ids = set()
+
+    def walk(entities):
+        for e in entities or []:
+            if e.get("persistent_id") is not None:
+                ids.add(int(e["persistent_id"]))
+            walk(e.get("entities", []))
+
+    walk((snapshot or {}).get("entities", []))
+    return ids
+
+
 def _sync_timer() -> "float | None":
     """
     Main-thread timer callback registered with bpy.app.timers.
@@ -149,6 +163,10 @@ def _sync_timer() -> "float | None":
             import_scene="",
         )
         importer.load(bpy.context, **options)
+        # Record the imported objects' transforms and colours as the synced baseline, so a later move or recolour
+        # in Blender is detected. The import itself must not be reported as an edit (see record_import_state).
+        from . import edit_capture as _ec_import
+        _ec_import.record_import_state(live_ids=_snapshot_entity_ids(latest))
 
         # Follow SketchUp viewport if enabled
         try:
@@ -189,6 +207,16 @@ def _push_pending_edits():
         # Imported geometry edits are reported on every pass, before any early return, so an imported
         # mesh's baseline is recorded and a later vertex edit is caught. bpy is bound here, first, because
         # a later "import bpy" in this function would make the name local and raise UnboundLocalError.
+
+        # The baseline names the scene's existing objects before any push decision. On the first pass the import and
+        # the push share this pass, so an unset baseline would make every untagged scene object look newly added.
+        from . import edit_capture as _ec_base
+        if not _ec_base.sync_baseline_names():
+            import bpy as _bpy_base  # bound under its own name: a later 'import bpy' would make 'bpy' local here
+            _ec_base.set_baseline_for_first_pass({o.name for o in _bpy_base.data.objects})
+
+        # A new pass: ids forgotten in an earlier pass must not suppress this pass's baseline.
+        edit_capture.tracker().begin_pass()
 
         # Deletions made in Blender: a tracked tagged object that no longer exists. Only ids we
         # synced are considered, so an object we never had cannot be erased by mistake.

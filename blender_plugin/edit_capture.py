@@ -56,6 +56,7 @@ class EditTracker:
 
     def __init__(self):
         self._synced: dict[int, SyncedState] = {}
+        self._forgotten_pass: set[int] = set()
 
     def record_sync(self, persistent_id: int, transform, color) -> None:
         """Record a value that is now the agreed state (imported, or pushed successfully)."""
@@ -66,6 +67,19 @@ class EditTracker:
 
     def forget(self, persistent_id: int) -> None:
         self._synced.pop(int(persistent_id), None)
+        self._forgotten_pass.add(int(persistent_id))
+
+    def begin_pass(self) -> None:
+        """Start a sync pass: ids forgotten earlier in this pass are no longer 'this pass' (see forgotten_this_pass)."""
+        self._forgotten_pass.clear()
+
+    def forgotten_this_pass(self) -> set[int]:
+        """Ids the deletion step forgot during the current pass; the baseline must not re-enrol these."""
+        return set(self._forgotten_pass)
+
+    def forget_all(self) -> None:
+        """Fresh start: forget every tracked id, so objects removed by a scene reset are not read as deletions."""
+        self._synced.clear()
 
     def diff(self, persistent_id: int, transform, color) -> Edit | None:
         """Return an Edit describing what changed since the last sync, or None.
@@ -154,16 +168,26 @@ def on_depsgraph_update(scene, depsgraph=None):  # pragma: no cover - needs Blen
             _pending[pid] = edit
 
 
-def record_import_state() -> None:  # pragma: no cover - needs Blender
+def record_import_state(live_ids=None, removing=()) -> None:  # pragma: no cover - needs Blender
     """Record every tagged object's current state as the synced baseline.
 
-    Called after an import so the import itself is never reported as an edit.
+    Called after an import so the import itself is never reported as an edit. When live_ids (the ids the snapshot
+    reports) is given, only those are enrolled, so a deleted SketchUp id is not re-tracked (see live_ids_to_enrol).
     """
     import bpy  # type: ignore[import-not-found]  # Blender-only module
 
     _set_baseline_names({o.name for o in bpy.data.objects})
+    # Only objects the importer built (tagged with its import marker) are enrolled. An object that merely carries a
+    # SketchUp id but was not imported (for example a factory object) must not be treated as synced, or the import
+    # would echo back as an edit on it once edits are queued.
+    # Exclude what this pass removes, and what the deletion step already forgot this pass: the snapshot still lists
+    # both, so the live filter alone would re-admit them.
+    _gone = set(removing) | _tracker.forgotten_this_pass()
+    enrol = None if live_ids is None else live_ids_to_enrol_excluding_removed(live_ids, _gone)
     for ob in bpy.data.objects:
-        if ID_PROP in ob:
+        if ID_PROP in ob and "skp_link_import" in ob:
+            if enrol is not None and int(ob[ID_PROP]) not in enrol:
+                continue
             _tracker.record_sync(int(ob[ID_PROP]), _object_transform(ob), _object_color(ob))
 
 
@@ -174,6 +198,33 @@ def record_import_state() -> None:  # pragma: no cover - needs Blender
 # The object names present when the sync baseline was taken. Set by record_import_state (called after each import),
 # so anything the user adds afterwards is distinguishable from what was already in the scene.
 _baseline_names: set[str] = set()
+
+
+def live_ids_to_enrol_excluding_removed(live_ids, removing) -> set[int]:
+    """The ids the baseline may enrol: those SketchUp still has, minus those the same pass is erasing.
+
+    The deletion pass erases removed ids; if the baseline re-enrolled one, the erasure would be undone in the tracker.
+    """
+    return {int(i) for i in live_ids} - {int(i) for i in removing}
+
+
+def live_ids_to_enrol(tagged_ids, live_ids) -> set[int]:
+    """The SketchUp ids the baseline may enrol: those the live snapshot still reports.
+
+    A tagged object can keep an id SketchUp has since deleted; enrolling it would re-track a stale id and undo the
+    deletion in the tracker.
+    """
+    live = {int(i) for i in live_ids}
+    return {int(i) for i in tagged_ids} & live
+
+
+def set_baseline_for_first_pass(names) -> None:
+    """Record the scene's existing object names as the baseline, before any push decision on the first pass.
+
+    The push runs in the same timer pass as the import; if the baseline were still empty then, every untagged scene
+    object (the factory Cube) would look newly added and be pushed into SketchUp.
+    """
+    _set_baseline_names(names)
 
 
 def sync_baseline_names() -> set[str]:

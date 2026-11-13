@@ -21,9 +21,20 @@ from .scene_importer import ExportSKP, ImportSKP, LiveImportSKP, menu_func_expor
 from . import log_config
 
 
+def _edit_capture_handler(scene, depsgraph=None):
+    """Depsgraph hook: queue Blender-side edits of tracked objects for the live push (see edit_capture)."""
+    from . import edit_capture
+
+    edit_capture.on_depsgraph_update(scene, depsgraph)
+
+
 def register():
     """Register all operators, panels, preferences, and menu items."""
     log_config.get_logger()  # Initialize logger on addon registration
+    # Edits made in Blender reach the live push only through this handler; without it nothing is ever queued.
+    # Guarded so a reload does not stack the same handler twice.
+    if _edit_capture_handler not in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.append(_edit_capture_handler)
     bpy.utils.register_class(SketchupAddonPreferences)
     bpy.utils.register_class(ImportSKP)
     bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
@@ -42,6 +53,8 @@ def register():
 
 def unregister():
     """Unregister all operators, panels, preferences, and menu items."""
+    if _edit_capture_handler in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.remove(_edit_capture_handler)
     # Stop live sync if running
     from .live_sync import _sync_state
 

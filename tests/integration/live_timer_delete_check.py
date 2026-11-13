@@ -67,7 +67,8 @@ try:
         fail("could not find the imported group by its SketchUp id")
     pid = int(group["skp_persistent_id"])
 
-    ec.record_import_state()
+    # Baseline from the live snapshot, as the production timer does: only ids SketchUp still reports are enrolled.
+    ec.record_import_state(live_ids=ls._snapshot_entity_ids(fetch_model_json_tcp(HOST, PORT, False)))
     bpy.data.objects.remove(group, do_unlink=True)
 
     # Run the real timer: it pushes the removal, then imports the snapshot.

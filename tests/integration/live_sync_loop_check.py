@@ -75,6 +75,10 @@ def restore_state():
 
 
 def fresh_scene():
+    # A fresh start, not a user deletion: forget the tracked ids first, so the wipe is not propagated to SketchUp
+    # as a deletion of the groups it still holds (the deletion pass would otherwise erase them).
+    from blender_plugin import edit_capture as _ec_fresh
+    _ec_fresh.tracker().forget_all()
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
 

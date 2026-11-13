@@ -170,3 +170,17 @@ def test_a_mesh_present_at_the_baseline_is_not_new_geometry():
     now = {"Cube", "Camera", "Light", "MyNewBox"}
     assert new_geometry_candidates(now, baseline) == {"MyNewBox"}
     assert new_geometry_candidates(baseline, baseline) == set()
+
+
+def test_first_pass_baseline_is_set_before_any_push():
+    """On the first sync pass the baseline must already name the scene's existing objects.
+
+    The push runs in the same timer pass as the import. If the baseline is still empty then (it is only recorded
+    after the import), every untagged scene object (the factory Cube) looks newly added and is pushed into SketchUp.
+    The baseline must be taken before the push decision, so the factory Cube is never new geometry.
+    """
+    from blender_plugin.edit_capture import new_geometry_candidates, set_baseline_for_first_pass
+
+    scene = {"Cube", "Camera"}
+    set_baseline_for_first_pass(scene)
+    assert new_geometry_candidates(scene, set_baseline_for_first_pass.__globals__["_baseline_names"]) == set()

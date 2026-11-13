@@ -144,3 +144,67 @@ def test_an_identical_colour_is_not_an_edit():
     t = EditTracker()
     t.record_sync(42, IDENT, RED)
     assert t.diff(42, IDENT, (255, 0, 0)) is None
+
+
+def test_forget_all_clears_every_tracked_id():
+    """A fresh start must forget every tracked id, so a Blender-only wipe is not later read as user deletions.
+
+    Without this, a scene emptied in Blender (a fresh start) leaves the tracker holding ids whose objects are gone,
+    and the deletion pass then erases those objects in SketchUp. forget_all is the fresh-start reset.
+    """
+    t = EditTracker()
+    t.record_sync(1, IDENT, RED)
+    t.record_sync(2, IDENT, RED)
+    t.forget_all()
+    assert t._synced == {}
+    assert removed_ids(set(), {1, 2}) == set()
+
+
+def test_baseline_enrols_only_ids_sketchup_still_has():
+    """The post-import baseline must not re-enrol a SketchUp id that no longer exists.
+
+    An object can keep a deleted SketchUp id in Blender; after the deletion the import rebuilds the scene and the
+    baseline would re-track that stale id, so the deletion would be undone in the tracker. Only ids the live
+    snapshot reports are enrolled.
+    """
+    from blender_plugin.edit_capture import live_ids_to_enrol
+
+    tagged = {558445: "erased", 558477: "kept", 558479: "kept"}
+    live = {558477, 558479}
+    assert live_ids_to_enrol(tagged.keys(), live) == {558477, 558479}
+    assert live_ids_to_enrol({558445}, set()) == set()
+
+
+def test_baseline_does_not_enrol_an_id_the_pass_is_about_to_delete():
+    """An id the same pass deletes must not be enrolled by that pass's baseline.
+
+    The deletion pass computes removed_ids from the tracker, then the import baseline runs. If the baseline enrols
+    an id the pass is removing (still listed by the snapshot it filters against), the erasure is undone in the
+    tracker. The baseline must skip ids the pass is removing.
+    """
+    from blender_plugin.edit_capture import live_ids_to_enrol_excluding_removed
+
+    live = {10, 20}
+    removing = {20}
+    assert live_ids_to_enrol_excluding_removed(live, removing) == {10}
+    assert live_ids_to_enrol_excluding_removed(live, set()) == {10, 20}
+
+
+def test_baseline_after_a_deletion_does_not_re_enrol_the_forgotten_id():
+    """A baseline that runs after a deletion pass must not re-track an id that pass forgot.
+
+    The deletion loop forgets ids SketchUp has erased; the post-import baseline runs later in the same pass and its
+    snapshot still lists them. The baseline must exclude this pass's forgotten ids.
+    """
+    from blender_plugin.edit_capture import EditTracker
+
+    t = EditTracker()
+    t.record_sync(7, IDENT, RED)
+    t.forget(7)
+    assert t.forgotten_this_pass() == {7}
+    # the baseline's admission is the snapshot's live ids minus what this pass forgot
+    admitted = {7} - t.forgotten_this_pass()
+    assert admitted == set()
+    # a new pass clears the mark
+    t.begin_pass()
+    assert t.forgotten_this_pass() == set()
