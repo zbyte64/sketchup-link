@@ -1265,8 +1265,10 @@ class SceneExporter:
         return self
 
     def save(self, context, **options):
-        logger.info(f"Finished exporting: {self.filepath}")
-        return {"FINISHED"}
+        # Export does not write a .skp yet. Report that honestly: returning FINISHED here told the user an export
+        # succeeded when no file was produced.
+        logger.error(f"SketchUp export is not implemented; no file was written to {self.filepath}")
+        return {"CANCELLED"}
 
 
 class ImportSKP(Operator, ImportHelper):
