@@ -34,6 +34,7 @@ module SketchupLink
         when 'geometry/group'   then add_group(params)
         when 'geometry/component'  then add_component(params)
         when 'geometry/delete'  then delete_entity(params)
+        when 'geometry/face/reshape' then reshape_face(params)
         when 'geometry/transform' then set_entity_transform(params)
         when 'model/clear'      then clear_model(params)
         when 'model/new'        then new_model(params)
@@ -433,6 +434,71 @@ module SketchupLink
 
       # Finds an entity by persistent_id across model.entities and all
       # component definitions. Returns the entity or nil.
+      # Reshape an existing face in place: its loop becomes the new points, in the SAME owning entities
+      # (a group or component definition), keeping its material, back material and layer.
+      #
+      # SketchUp assigns a new persistent_id to any redrawn face, so the response carries both ids and the
+      # caller re-identifies the object from old to new. The whole change is one transaction: an error
+      # leaves the model as it was.
+      def reshape_face(params)
+        model = active_model
+        return [400, { 'error' => 'no active model' }] unless model
+
+        pid = params['persistent_id']
+        return [400, { 'error' => 'missing required field: persistent_id' }] unless pid
+
+        points = params['points']
+        return [400, { 'error' => 'missing required field: points' }] unless points
+        return [400, { 'error' => 'points must have at least 3 elements' }] unless points.length >= 3
+
+        face = find_face_recursive(model, pid)
+        return [404, { 'error' => "face not found: pid=#{pid}" }] unless face
+
+        # A face's parent is either an Entities collection or a ComponentDefinition. Only Entities can add a
+        # face, so a definition is resolved to its entities.
+        parent = face.parent
+        owner = parent.is_a?(Sketchup::ComponentDefinition) ? parent.entities : parent
+        inch_points = points.map { |pt| meter_point_to_inches(pt) }
+        material = face.material
+        back_material = face.back_material
+        layer = face.layer
+
+        run_transaction(model, 'Reshape Face') do
+          face.erase!
+          new_face = owner.add_face(inch_points)
+          new_face.material = material if material
+          new_face.back_material = back_material if back_material
+          new_face.layer = layer if layer
+          { 'ok' => true, 'old_persistent_id' => pid, 'persistent_id' => new_face.persistent_id }
+        end
+      end
+
+      # Find a face by persistent id anywhere in the model: top level, inside groups, or inside
+      # component definitions. Unlike find_entity_by_persistent_id this recurses into groups, which is
+      # where an imported face lives.
+      def find_face_recursive(model, pid)
+        search = lambda do |entities|
+          entities.each do |e|
+            return e if e.is_a?(Sketchup::Face) && e.persistent_id == pid
+            if e.is_a?(Sketchup::Group)
+              found = search.call(e.entities)
+              return found if found
+            elsif e.is_a?(Sketchup::ComponentInstance)
+              found = search.call(e.definition.entities)
+              return found if found
+            end
+          end
+          nil
+        end
+        search.call(model.entities) || begin
+          model.definitions.each do |defn|
+            found = search.call(defn.entities)
+            return found if found
+          end
+          nil
+        end
+      end
+
       def find_entity_by_persistent_id(model, pid)
         model.entities.each { |e| return e if e.persistent_id == pid }
         model.definitions.each do |defn|
