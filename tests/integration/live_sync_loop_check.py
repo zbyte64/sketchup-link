@@ -1,22 +1,18 @@
 """
 Live-sync poll -> queue -> timer check. Runs INSIDE Blender (`blender --background`).
 
-Drives blender_plugin.live_sync._poll_loop (a real daemon thread) and calls
-_sync_timer() DIRECTLY (bpy.app.timers is never registered).
+Feeds snapshots into the live-sync queue and calls _sync_timer() DIRECTLY
+(bpy.app.timers is never registered).
 
 Steps and their data source (see each step's label in the output):
   (a) LIVE       first snapshot from the live SketchUp at SKETCHUP_LINK_HOST:PORT
                  is imported by _sync_timer().
   (c) LIVE       when several snapshots are queued, _sync_timer() imports only
                  the latest one (queue keeps only the freshest snapshot).
-  (b) MOCK-ONLY  a FurnitureGroup transform change is reflected in the Blender
-                 object's matrix_world after a second poll. The second snapshot
-                 is a Python-built mock (sketchup_link/server.rb-style
-                 FurnitureGroup), NOT the live SketchUp. The live transform path
-                 (POST /control/geometry/transform) is unverified until the
-                 endpoint is wired into the SketchUp plugin. Point
-                 `_mock_moved_snapshot` at the live server later without
-                 rewriting the test.
+  (b) LIVE       the FurnitureGroup is moved +0.5 m in X in SketchUp through
+                 POST /control/geometry/transform; the next snapshot, imported
+                 by _sync_timer(), moves the Blender object identified by the
+                 group's SketchUp id by the same amount.
 
 Environment:
     SKETCHUP_LINK_HOST  default 127.0.0.1
@@ -26,11 +22,12 @@ Exit 0 on success, non-zero on any failure.
 """
 
 import copy
+import json
 import os
 import queue
 import sys
-import threading
 import time
+import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.normpath(os.path.join(HERE, "..", ".."))
@@ -66,8 +63,7 @@ if "blender_plugin" not in bpy.context.preferences.addons:
     fail_exit("blender_plugin did not appear in context.preferences.addons")
 
 from blender_plugin import live_sync  # noqa: E402
-from blender_plugin.live_adapter import fetch_model_json_tcp, JsonModel  # noqa: E402
-from blender_plugin.scene_importer import SceneImporter  # noqa: E402
+from blender_plugin.live_adapter import fetch_model_json_tcp  # noqa: E402
 
 # Snapshot the global sync state so we can restore it on exit.
 _SAVED_STATE = dict(live_sync._sync_state)
@@ -78,74 +74,20 @@ def restore_state():
     live_sync._sync_state.update(_SAVED_STATE)
 
 
-def import_options():
-    return dict(
-        filepath="",
-        scenes_as_camera=False,
-        import_camera=False,
-        reuse_material=True,
-        dedub_only=False,
-        reuse_existing_groups=False,
-        max_instance=1,
-        dedub_type="VERTEX",
-        import_scene="",
-    )
-
-
 def fresh_scene():
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
 
-def find_group_object(name="FurnitureGroup"):
-    """Return the Blender object for the FurnitureGroup, or None."""
-    for ob in bpy.data.objects:
-        if ob.name == name or ob.name.startswith(name):
-            return ob
-    return None
+def object_for_pid(pid):
+    """Return the Blender object stored with this SketchUp persistent id, or None."""
+    return next((o for o in bpy.data.objects if o.get("skp_persistent_id") == pid), None)
 
 
-def mock_furniture_snapshot(translate_x):
-    """MOCK-ONLY: build a snapshot with a FurnitureGroup at a given X offset.
-
-    Mirrors tests/integration/factories.rb (`group name='FurnitureGroup'`). Only
-    the transform changes between calls. Replace this with a live fetch once the
-    SketchUp control endpoint is wired.
-    """
-    # Row-major 4x4: translation in column 4 (meters).
-    t = [
-        1, 0, 0, translate_x,
-        0, 1, 0, 0,
-        0, 0, 1, 0,
-        0, 0, 0, 1,
-    ]
-    return {
-        "model_guid": "mock-live-sync-loop",
-        "title": "Mock FurnitureGroup",
-        "path": "/tmp/mock.skp",
-        "camera": {
-            "eye": [0, 0, 10], "target": [0, 0, 0], "up": [0, 1, 0],
-            "perspective": True, "fov": 35.0, "aspect_ratio": 1.0,
-        },
-        "shadow_info": {},
-        "layers": [{"name": "Furniture", "visible": True}],
-        "materials": [],
-        "component_definitions": {},
-        "entities": [
-            {
-                "type": "Group",
-                "name": "FurnitureGroup",
-                "persistent_id": 99001,
-                "layer": "Furniture",
-                "transformation": t,
-                "entities": [],
-            }
-        ],
-    }
-
-
-def mock_moved_snapshot(x):
-    """MOCK-ONLY hook. Swap for a live fetch after the endpoint is wired."""
-    return mock_furniture_snapshot(x)
+def post_control(path, body):
+    req = urllib.request.Request(f"http://{HOST}:{PORT}/control/{path}", data=json.dumps(body).encode(),
+                                 method="POST", headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return r.status, json.loads(r.read() or b"{}")
 
 
 def import_snapshot_via_timer(snapshot):
@@ -207,25 +149,37 @@ step(
 )
 
 # ===========================================================================
-# (b) MOCK-ONLY — FurnitureGroup transform reflected in matrix_world
+# (b) LIVE — a SketchUp transform change reaches matrix_world on the next poll
 # ===========================================================================
-# MOCK-ONLY: the live SketchUp endpoint POST /control/geometry/transform is not
-# wired (HTTP 404 on the live server), so the moved snapshot here is built in
-# Python, not fetched from SketchUp.
 fresh_scene()
-import_snapshot_via_timer(mock_moved_snapshot(0.0))  # first poll
-ob = find_group_object("FurnitureGroup")
+snap0 = fetch_model_json_tcp(HOST, PORT, False)
+group = next((e for e in snap0["entities"] if e.get("type") == "Group" and e.get("name") == "FurnitureGroup"), None)
+if group is None:
+    fail_exit("the live snapshot has no FurnitureGroup")
+pid = group["persistent_id"]
+import_snapshot_via_timer(snap0)  # first poll
+ob = object_for_pid(pid)
 x_before = ob.matrix_world.translation.x if ob else None
 
-import_snapshot_via_timer(mock_moved_snapshot(0.5))  # second poll, moved +0.5 m in X
-ob = find_group_object("FurnitureGroup")
+moved = list(group["transformation"])
+moved[3] += 0.5  # row-major, meters: translate +0.5 m in X
+try:
+    status, reply = post_control("geometry/transform", {"persistent_id": pid, "transformation": moved})
+except Exception as exc:  # noqa: BLE001
+    status, reply = None, str(exc)
+step("LIVE", "(b) SketchUp accepted the transform", status == 200, f"status={status} reply={reply}")
+
+import_snapshot_via_timer(fetch_model_json_tcp(HOST, PORT, False))  # second poll
+ob = object_for_pid(pid)
 x_after = ob.matrix_world.translation.x if ob else None
-ok_b = ob is not None and x_before is not None and x_after is not None and abs(x_after - 0.5) < 1e-4
+ok_b = x_before is not None and x_after is not None and abs((x_after - x_before) - 0.5) < 1e-4
 step(
-    "MOCK-ONLY", "(b) FurnitureGroup matrix_world reflects transform after 2nd poll",
+    "LIVE", "(b) object for the FurnitureGroup's id moved +0.5 m after 2nd poll",
     ok_b,
-    f"x_before={x_before} x_after={x_after}",
+    f"pid={pid} x_before={x_before} x_after={x_after}",
 )
+# Put the group back; the runner also resets the reference model after every check.
+post_control("geometry/transform", {"persistent_id": pid, "transformation": group["transformation"]})
 
 # ===========================================================================
 # Restore state and report
