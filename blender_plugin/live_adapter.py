@@ -163,6 +163,15 @@ def fetch_model_json_tcp(host=TCP_DEFAULT_HOST, port=TCP_DEFAULT_PORT, binary_te
 # Helpers
 # ---------------------------------------------------------------------------
 
+# The component definitions of the snapshot being imported, by name. JsonModel sets it when it wraps a snapshot,
+# so every entity built from that model resolves nested instance definitions without threading a parameter.
+_DEFINITIONS: dict = {}
+
+
+def _current_definitions() -> dict:
+    return _DEFINITIONS
+
+
 class _NameOnly:
     """Minimal stub with just a .name — used for material/layer name refs."""
 
@@ -408,8 +417,9 @@ class JsonEntities:
     .instances iterables that match the Cython Entities interface.
     """
 
-    def __init__(self, entities_list):
+    def __init__(self, entities_list, definitions=None):
         self._list = entities_list
+        self._definitions = definitions if definitions is not None else _current_definitions()
 
     @property
     def faces(self):
@@ -422,7 +432,7 @@ class JsonEntities:
 
     @property
     def instances(self):
-        return [JsonInstance(e) for e in self._list if e.get("type") == "ComponentInstance"]
+        return [JsonInstance(e, self._definitions) for e in self._list if e.get("type") == "ComponentInstance"]
 
     def __iter__(self):
         return iter(self._list)
@@ -478,8 +488,11 @@ class JsonGroup:
 
 
 class JsonInstance:
-    def __init__(self, d):
+    def __init__(self, d, definitions=None):
         self._d = d
+        # The model's component definitions by name. A nested instance's definition must be the real
+        # definition (with entities) so the depth analysis can recurse; _NameOnly has no entities.
+        self._definitions = definitions if definitions is not None else _current_definitions()
 
     @property
     def persistent_id(self):
@@ -510,7 +523,11 @@ class JsonInstance:
 
     @property
     def definition(self):
-        return _NameOnly(self._d.get("definition_name", ""))
+        name = self._d.get("definition_name", "")
+        defn = self._definitions.get(name)
+        if defn is not None:
+            return JsonDefinitionRef(defn, self._definitions)
+        return _NameOnly(name)
 
 
 # ---------------------------------------------------------------------------
@@ -525,8 +542,9 @@ class JsonDefinitionRef:
     matching the Cython interface used in load() lines 258–261).
     """
 
-    def __init__(self, d):
+    def __init__(self, d, definitions=None):
         self._d = d
+        self._registry = definitions if definitions is not None else _current_definitions()
 
     @property
     def name(self):
@@ -656,8 +674,10 @@ class JsonModel:
     """
 
     def __init__(self, d, conn_config=None):
+        global _DEFINITIONS
         self._d = d
         self._conn_config = conn_config
+        _DEFINITIONS = d.get("component_definitions", {}) or {}
 
     @property
     def entities(self):
@@ -670,16 +690,18 @@ class JsonModel:
     @property
     def component_definition_as_dict(self):
         """Dict[name → JsonDefinitionRef] matching component_definition_as_dict."""
+        registry = _current_definitions()
         return {
-            name: JsonDefinitionRef(defn)
+            name: JsonDefinitionRef(defn, registry)
             for name, defn in self._d.get("component_definitions", {}).items()
         }
 
     @property
     def component_definitions(self):
         """Iterable of JsonDefinitionRef — used for depth analysis in load()."""
+        registry = _current_definitions()
         return [
-            JsonDefinitionRef(d)
+            JsonDefinitionRef(d, registry)
             for d in self._d.get("component_definitions", {}).values()
         ]
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from hypothesis import assume, given, strategies as st
 
-from blender_plugin.live_adapter import JsonEntities, JsonFace, JsonLayer, _JsonColor, _flat_to_4x4
+from blender_plugin.live_adapter import JsonEntities, JsonFace, JsonInstance, JsonLayer, _JsonColor, _flat_to_4x4
 
 _finite_floats = st.floats(allow_nan=False, allow_infinity=False)
 _layer_names = st.text(min_size=1)
@@ -132,3 +132,20 @@ def test_attaching_edges_does_not_rescan_every_edge_per_face():
     assert per_face_scans <= len(edges) + 2 * len(faces), (
         f"each face rescans every edge: {per_face_scans} endpoint reads for {len(faces)} faces and {len(edges)} edges"
     )
+
+
+def test_nested_instance_definition_exposes_its_entities():
+    """A component instance inside another component must resolve its definition to real entities.
+
+    The depth analysis recurses through instance.definition.entities. The instance's definition used to be a
+    name-only stub with no entities, so any component containing a component instance failed to import:
+    'AttributeError: _NameOnly has no attribute entities', rejecting the whole live sync.
+    """
+    defs = {
+        "Leaf": {"name": "Leaf", "entities": [{"type": "Face", "persistent_id": 9, "outer_loop": []}]},
+        "Mid": {"name": "Mid", "entities": [{"type": "ComponentInstance", "definition_name": "Leaf",
+                                             "transformation": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]}]},
+    }
+    inst = JsonInstance({"type": "ComponentInstance", "definition_name": "Leaf"}, definitions=defs)
+    assert hasattr(inst.definition, "entities")
+    assert [f.persistent_id for f in JsonEntities(inst.definition.entities).faces] == [9]
