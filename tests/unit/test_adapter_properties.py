@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from hypothesis import assume, given, strategies as st
 
-from blender_plugin.live_adapter import JsonEntities, JsonFace, JsonInstance, JsonLayer, _JsonColor, _flat_to_4x4
+from blender_plugin.live_adapter import JsonEntities, JsonFace, JsonInstance, JsonLayer, JsonModel, _JsonColor, _flat_to_4x4
 
 _finite_floats = st.floats(allow_nan=False, allow_infinity=False)
 _layer_names = st.text(min_size=1)
@@ -164,3 +164,27 @@ def test_instance_with_missing_definition_is_skipped_not_crashing():
     ents = JsonEntities([ghost], definitions={})
     # Skipped: no instance is offered for the depth analysis to recurse into.
     assert ents.instances == []
+
+
+def _scene(name, with_camera):
+    s = {"name": name}
+    if with_camera:
+        s["camera"] = {"eye": [0, 0, 10], "target": [0, 0, 0], "up": [0, 1, 0],
+                       "perspective": True, "fov": 35.0, "aspect_ratio": 1.0}
+    return s
+
+
+def test_a_scene_with_a_camera_is_kept():
+    """A saved scene with a view must import: it is the only one the importer can make a camera for."""
+    m = JsonModel({"scenes": [_scene("Front", True)], "entities": []})
+    assert [s.name for s in m.scenes] == ["Front"]
+
+
+def test_a_scene_without_a_camera_is_skipped_not_imported_blank():
+    """A scene with no view (use_camera false) has nothing to import; it must be dropped, not made a blank camera.
+
+    The serializer keeps such a scene (with a null camera) so it cannot vanish silently in the snapshot; the
+    importer is the one that skips it. Both halves are pinned here, so neither is checked only by agreement.
+    """
+    m = JsonModel({"scenes": [_scene("Empty", False), _scene("Front", True)], "entities": []})
+    assert [s.name for s in m.scenes] == ["Front"]
