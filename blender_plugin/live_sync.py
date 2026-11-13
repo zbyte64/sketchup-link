@@ -278,6 +278,14 @@ def _push_new_meshes(sync_push, bpy):
 
 
 _import_geometry = {}  # SketchUp id -> (geometry signature, per-face shapes) as the import produced it
+# Set by _reshape_changed_faces when a face's stored id no longer matches any SketchUp face: SketchUp changed it.
+_LAST_STALE: dict = {}
+_sp_conflict = None  # bound to sync_push.conflict_warning at first use (see _conflict_message)
+
+
+def _conflict_message(obj_name: str, stale: bool) -> str:
+    from . import sync_push as _sp
+    return _sp.conflict_warning(obj_name, stale)
 
 
 def _face_shapes(ob):
@@ -341,8 +349,10 @@ def _warn_imported_geometry_edits(sync_push, bpy, push=True):
             for gone in sorted(set(baseline[1]) - set(shapes) - {0}):
                 _push_delete(gone, sync_push)
             if not _reshape_changed_faces(ob, sync_push, unchanged):
-                sync_push.add_warning(
-                    f"{ob.name}: vertex edit kept in Blender only (could not be pushed to SketchUp)")
+                # A stored face id that no longer matches any SketchUp face means SketchUp changed that face
+                # (a conflict), not a transport failure. Say which, so the user is not told the edit was kept.
+                stale = bool(_LAST_STALE.get("stale"))
+                sync_push.add_warning(_conflict_message(ob.name, stale))
             # Pushed or refused, the baseline is the new geometry (a reshape writes new ids to the layer).
             _import_geometry[pid] = (sig, _face_shapes(ob))
 
@@ -363,6 +373,7 @@ def _reshape_changed_faces(ob, sync_push, unchanged=frozenset()):
     # faces new SketchUp ids, so a stored id can be stale. Resolve each face against the snapshot the
     # live timer fetched for this pass; a face that cannot be found is not pushed.
     current = _current_face_ids(ob)
+    _LAST_STALE["stale"] = False
     by_face = {}
     for poly in ob.data.polygons:
         by_face.setdefault(int(layer.data[poly.index].value), []).append(poly)
@@ -382,6 +393,9 @@ def _reshape_changed_faces(ob, sync_push, unchanged=frozenset()):
                 f"{ob.name}: concave face edit reverted to the SketchUp geometry (SketchUp cannot store a concave face faithfully)")
             ok = False
             continue
+        if face_pid not in current and face_pid not in set(current.values()):
+            # The stored id is gone from SketchUp and could not be re-resolved: SketchUp changed this face.
+            _LAST_STALE["stale"] = True
         face_pid = current.get(face_pid, face_pid)
         if len(loop) < 3:
             # The boundary could not be walked as one loop (for example a face with a hole). Refuse to push

@@ -97,3 +97,24 @@ def test_warnings_are_capped_at_the_most_recent():
     assert len(kept) == sync_push.MAX_WARNINGS
     assert kept[-1] == f"w{sync_push.MAX_WARNINGS + 4}"
     sync_push.clear_warnings()
+
+
+def test_conflict_message_names_the_other_side_change():
+    """A face SketchUp changed since the Blender edit is a conflict, and the warning must say so.
+
+    Before: the user saw 'vertex edit kept in Blender only', which is false: the edit was dropped, and nothing
+    told them SketchUp had changed the same face. A conflict message names that cause.
+    """
+    import blender_plugin.sync_push as sp
+
+    msg = sp.conflict_warning("Loose Entity", stale=True)
+    assert "SketchUp changed" in msg and "dropped" in msg
+    assert "kept in Blender" not in msg
+
+
+def test_generic_push_failure_keeps_the_plain_message():
+    import blender_plugin.sync_push as sp
+
+    msg = sp.conflict_warning("Loose Entity", stale=False)
+    assert "could not be pushed" in msg
+    assert "SketchUp changed" not in msg

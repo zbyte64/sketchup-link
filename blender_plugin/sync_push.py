@@ -113,6 +113,18 @@ _warnings: list[str] = []
 MAX_WARNINGS = 20
 
 
+def conflict_warning(obj_name: str, stale: bool) -> str:
+    """The sync warning for an imported object's edit that could not be pushed.
+
+    stale=True: SketchUp changed the same face since the Blender edit, so the edit is dropped (SketchUp wins).
+    Saying so matters: 'kept in Blender only' would mislead, since the edit is not kept.
+    """
+    if stale:
+        return (f"{obj_name}: SketchUp changed this face since your edit, so your edit was dropped "
+                f"(SketchUp wins). Re-make the edit on the current face if you still want it.")
+    return f"{obj_name}: vertex edit could not be pushed to SketchUp, kept in Blender only"
+
+
 def add_warning(text: str) -> None:
     """Record a warning, keeping the most recent MAX_WARNINGS."""
     _warnings.append(text)
