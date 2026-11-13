@@ -274,15 +274,16 @@ class TestSceneCleanup:
             )
 
     def test_no_orphan_materials(self):
-        """Every material is used by at least one mesh slot (except back_materials)."""
+        """Every material is used by at least one mesh slot.
+
+        Blue is only a back_material in the test model, on a face with no front material; the importer
+        falls back to the back material for such a face, so Blue must be in a slot too."""
         used_by_slot = set()
         for me in bpy.data.meshes:
             for mat in me.materials:
                 if mat:
                     used_by_slot.add(mat.name)
-        # Materials that exist only as back_material won't be in any mesh slot.
-        # Blue material is a back_material in the test model.
-        exempt = {"DefaultMaterial", "Blue"}
+        exempt = {"DefaultMaterial"}
         for mat in bpy.data.materials:
             if mat.name not in used_by_slot and mat.name not in exempt:
                 pytest.fail(f"Unused material: {mat.name!r}")

@@ -670,8 +670,15 @@ class SceneImporter:
         uvs_used = False
 
         for f in entities.faces:  # type: ignore[union-attr]
+            # A Blender polygon has one material, a SketchUp face two sides. Use the front material; if
+            # the front is unpainted and nothing inherited paints it, fall back to the back material, so
+            # a face painted only on its back (common on flipped faces) keeps its colour. The Cython
+            # binding has no back_material, hence getattr.
+            back = getattr(f, "back_material", None)
             if f.material:
                 mat_number = mats[f.material.name]
+            elif back and default_material == "DefaultMaterial":
+                mat_number = mats[back.name]
             else:
                 mat_number = mats[default_material]
                 if default_material != "DefaultMaterial":
