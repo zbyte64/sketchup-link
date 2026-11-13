@@ -188,3 +188,19 @@ def test_a_scene_without_a_camera_is_skipped_not_imported_blank():
     """
     m = JsonModel({"scenes": [_scene("Empty", False), _scene("Front", True)], "entities": []})
     assert [s.name for s in m.scenes] == ["Front"]
+
+
+def test_live_import_excludes_hidden_layers():
+    """Spec (geometry_fidelity.feature): 'Hidden layer entities are excluded' on the live-sync path.
+
+    The snapshot marks hidden layers with visible=false. The live import must name them in its layers_skip so
+    the importer drops their entities. Before the fix, live sync (import_scene empty) never built layers_skip,
+    so hidden-layer geometry was imported.
+    """
+    from blender_plugin.live_adapter import JsonModel
+    from blender_plugin.scene_importer import hidden_layers_for_live
+
+    snap = {"layers": [{"name": "Shown", "visible": True}, {"name": "Hidden", "visible": False}],
+            "entities": [], "materials": [], "component_definitions": {}}
+    hidden = hidden_layers_for_live(JsonModel(snap))
+    assert [l.name for l in hidden] == ["Hidden"]

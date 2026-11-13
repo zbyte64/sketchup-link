@@ -189,6 +189,15 @@ def material_alpha(mat, colour_alpha):
     return round(min(max(float(opacity), 0.0), 1.0), 2)
 
 
+def hidden_layers_for_live(model) -> list:
+    """The layers hidden in the snapshot, for the live import to exclude.
+
+    Spec (geometry_fidelity.feature): hidden layer entities are excluded. The live sync does not import a named
+    scene, so the scene-based layers_skip never applies; the hidden layers come from the model's own layer flags.
+    """
+    return [l for l in (model.layers or []) if not getattr(l, "visible", True)]
+
+
 class SceneImporter:
     def __init__(self):
         self.filepath = "/tmp/untitled.skp"
@@ -284,6 +293,10 @@ class SceneImporter:
                 logger.info("Invisible Layer(s)/Tag(s): " + ", ".join(hidden_layers))
 
         # Import each scene as a Blender camera
+        # Live sync (no named scene): exclude entities on hidden layers, per the spec.
+        if not self.layers_skip:
+            self.layers_skip = hidden_layers_for_live(self.skp_model)
+
         if options["scenes_as_camera"]:
             logger.info("Importing all SketchUp scenes as Blender cameras")
             for s in self.skp_model.scenes:

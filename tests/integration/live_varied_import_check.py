@@ -82,16 +82,27 @@ try:
 
     identified = collections.Counter(int(o["skp_persistent_id"]) for o in bpy.data.objects
                                      if "skp_persistent_id" in o and o.get("skp_link_import"))
-    missing = [pid for pid in inst_ids if identified[pid] == 0]
+    # Spec (geometry_fidelity.feature): entities on hidden layers are excluded. An instance on a hidden layer must
+    # be absent from Blender; one on a visible layer must be identified. Hidden-ness comes from the snapshot's own
+    # layer flags, not a hard-coded layer name.
+    hidden_layers = {l["name"] for l in snap.get("layers", []) if not l.get("visible", True)}
+    should_import = [e for e in insts if e.get("layer") not in hidden_layers]
+    should_skip = [e for e in insts if e.get("layer") in hidden_layers]
+    missing = [int(e["persistent_id"]) for e in should_import if identified[int(e["persistent_id"])] == 0]
     if missing:
-        fail(f"{len(missing)} instance(s) are not identified Blender objects")
+        fail(f"{len(missing)} visible-layer instance(s) are not identified Blender objects")
+    leaked = [int(e["persistent_id"]) for e in should_skip if identified[int(e["persistent_id"])] > 0]
+    if leaked:
+        fail(f"{len(leaked)} instance(s) on hidden layers were imported; the spec excludes them")
+    inst_ids = [int(e["persistent_id"]) for e in should_import]
     collapsed = [pid for pid in inst_ids if identified[pid] > 1]
     if collapsed:
         fail(f"{len(collapsed)} instance id(s) map to more than one Blender object")
 
-    layers_seen = {e.get("layer") for e in insts}
-    if layers_seen != set(LAYERS):
-        fail(f"instances span layers {sorted(layers_seen)}, expected {sorted(LAYERS)}")
+    layers_seen = {e.get("layer") for e in should_import}
+    visible_expected = set(LAYERS) - hidden_layers
+    if layers_seen != visible_expected:
+        fail(f"visible-layer instances span {sorted(layers_seen)}, expected {sorted(visible_expected)}")
 
     if bpy.data.materials.get("TexturedWall") is None:
         fail("the textured material TexturedWall was not imported")
@@ -119,8 +130,8 @@ try:
         fail(f"{len(attributed - sketchup_faces)} Blender polygon(s) name a face that is not in SketchUp")
 
     status = 0
-    print(f"LIVE-VARIED OK: {len(insts)} instances identified once each across {len(LAYERS)} layers, "
-          f"textured material present, {len(sketchup_faces)} faces attributed")
+    print(f"LIVE-VARIED OK: {len(should_import)} visible-layer instances identified once each, "
+          f"{len(should_skip)} hidden-layer instances excluded, textured material present, {len(sketchup_faces)} faces attributed")
 finally:
     try:
         reference_reset.mcp_eval('Sketchup.active_model.entities.grep(Sketchup::Group).each { |g| g.erase! if g.name == "VariedScene" }; "ok"')
