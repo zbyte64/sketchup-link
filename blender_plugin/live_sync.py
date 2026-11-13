@@ -315,6 +315,9 @@ def _reshape_changed_faces(ob, sync_push):
         loop = _face_loop(ob, polys)
         face_pid = current.get(face_pid, face_pid)
         if len(loop) < 3:
+            # The boundary could not be walked as one loop (for example a face with a hole). Refuse to push
+            # a guessed outline, and say so: the edit stays in Blender only.
+            _logger.warning(f"face {face_pid} of {ob.name} has no single boundary loop; not reshaped")
             ok = False
             continue
         body = json.dumps({"persistent_id": face_pid, "points": loop}).encode()
@@ -333,32 +336,52 @@ def _reshape_changed_faces(ob, sync_push):
 
 
 def _face_loop(ob, polys):
-    """The full boundary of a SketchUp face, rebuilt from all of its triangles.
+    """The true boundary of a SketchUp face, walked from its triangles.
 
-    A SketchUp face is triangulated into one or more Blender polygons, so one polygon's vertices are only
-    part of it. The face's loop is the distinct vertices of all its polygons, in world space, ordered
-    around their centroid. That ordering is exact for convex faces; a concave face needs a true boundary
-    walk, which is not implemented and is reported as a limit rather than guessed.
+    A face is triangulated into Blender polygons. Its boundary is the set of triangle edges used by exactly
+    one triangle; walking those edges, oriented by each triangle's winding, gives the outline in order. This
+    is exact for concave faces too: a centroid-angle ordering reorders a U-shaped face's notch and pushes a
+    different outline with no error. Returns the loop in world space, or [] when the boundary is not a single
+    closed chain (a face with a hole), so the caller refuses to push it rather than push a wrong loop.
     """
-    import math
-    indices = set()
+    from collections import Counter
+
+    def key(i):
+        co = ob.matrix_world @ ob.data.vertices[i].co
+        return (round(co.x, 6), round(co.y, 6), round(co.z, 6))
+
+    coords = {}
+    use = Counter()
+    directed = {}
     for p in polys:
-        indices.update(p.vertices)
-    pts = [ob.matrix_world @ ob.data.vertices[i].co for i in indices]
-    if len(pts) < 3:
+        idx = list(p.vertices)
+        for i in idx:
+            coords[key(i)] = ob.matrix_world @ ob.data.vertices[i].co
+        a, b, c = (key(idx[0]), key(idx[1]), key(idx[2])) if len(idx) >= 3 else (None, None, None)
+        if a is None:
+            return []
+        for u, v in ((a, b), (b, c), (c, a)):
+            use[frozenset((u, v))] += 1
+            directed[frozenset((u, v))] = (u, v)
+    nxt = {}
+    for k, n in use.items():
+        if n != 1:
+            continue
+        u, v = directed[k]
+        if u in nxt:
+            return []
+        nxt[u] = v
+    if not nxt:
         return []
-    cx = sum(v.x for v in pts) / len(pts)
-    cy = sum(v.y for v in pts) / len(pts)
-    cz = sum(v.z for v in pts) / len(pts)
-    # Order around the centroid in the face's own plane: use the two axes of largest spread.
-    xs = [v.x - cx for v in pts]
-    ys = [v.y - cy for v in pts]
-    zs = [v.z - cz for v in pts]
-    spread = {"x": sum(a * a for a in xs), "y": sum(a * a for a in ys), "z": sum(a * a for a in zs)}
-    axes = sorted(spread, key=spread.get, reverse=True)[:2]
-    coord = {"x": xs, "y": ys, "z": zs}
-    ordered = sorted(range(len(pts)), key=lambda k: math.atan2(coord[axes[1]][k], coord[axes[0]][k]))
-    return [list(pts[k]) for k in ordered]
+    start = next(iter(nxt))
+    walk = [start]
+    cur = nxt.get(start)
+    while cur is not None and cur != start:
+        walk.append(cur)
+        cur = nxt.get(cur)
+    if cur != start or len(walk) != len(nxt):
+        return []
+    return [list(coords[k]) for k in walk]
 
 
 def _current_face_ids(ob):
