@@ -59,7 +59,9 @@ try:
     ls._sync_state["conn_config"] = {"mode": "TCP", "host": HOST, "port": PORT, "binary_textures": False}
     ls._sync_state["running"] = True
     ls._sync_state["queue"] = queue.SimpleQueue()
-    ls._sync_state["queue"].put(fetch_model_json_tcp(HOST, PORT, False))
+    _snap = fetch_model_json_tcp(HOST, PORT, False)
+    _snap["two_way_enabled"] = True  # this check exercises two-way deletion
+    ls._sync_state["queue"].put(_snap)
     ls._sync_timer()
 
     group = next((o for o in bpy.data.objects if o.get("skp_persistent_id") and o.name.startswith("G-")), None)
@@ -72,7 +74,9 @@ try:
     bpy.data.objects.remove(group, do_unlink=True)
 
     # Run the real timer: it pushes the removal, then imports the snapshot.
-    ls._sync_state["queue"].put(fetch_model_json_tcp(HOST, PORT, False))
+    _snap = fetch_model_json_tcp(HOST, PORT, False)
+    _snap["two_way_enabled"] = True  # this check exercises two-way deletion
+    ls._sync_state["queue"].put(_snap)
     ls._sync_timer()
 
     names = {e.get("persistent_id") for e in json.loads(urllib.request.urlopen(BASE + "/model", timeout=30).read())["entities"]}

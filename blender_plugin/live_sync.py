@@ -223,18 +223,24 @@ def _push_pending_edits():
         # A new pass: ids forgotten in an earlier pass must not suppress this pass's baseline.
         edit_capture.tracker().begin_pass()
 
+        # Two-way editing is a SketchUp toggle, off by default. Every Blender-to-SketchUp write below consults
+        # it; with it off the sync keeps SketchUp's state and only reports what Blender would have changed.
+        two_way = sync_push.may_push_edits(_sync_state.get("two_way_enabled"))
+
         # Deletions made in Blender: a tracked tagged object that no longer exists. Only ids we
         # synced are considered, so an object we never had cannot be erased by mistake.
         import bpy  # type: ignore[import-not-found]  # Blender-only module
         present = {int(o["skp_persistent_id"]) for o in bpy.data.objects if "skp_persistent_id" in o}
-        for pid in edit_capture.removed_ids(set(edit_capture.tracker()._synced.keys()), present):
-            _push_delete(pid, sync_push)
-            edit_capture.tracker().forget(pid)
+        if two_way:
+            for pid in edit_capture.removed_ids(set(edit_capture.tracker()._synced.keys()), present):
+                _push_delete(pid, sync_push)
+                edit_capture.tracker().forget(pid)
 
         # Adds made in Blender: a mesh object with no SketchUp identity is new geometry. Each
         # polygon is pushed as a face, and the id SketchUp returns is written back so the object is
         # enrolled and never pushed again (echo suppression).
-        _push_new_meshes(sync_push, bpy)
+        if two_way:
+            _push_new_meshes(sync_push, bpy)
 
         edits = edit_capture.drain_pending()
         if not edits:
@@ -255,9 +261,7 @@ def _push_pending_edits():
                                          color=None)
             return SketchUpState()
 
-        # Two-way editing is a SketchUp toggle, off by default. When it is off, Blender edits are not written into
-        # SketchUp: the sync keeps SketchUp's state and only reports the edit it did not apply.
-        if not sync_push.may_push_edits(_sync_state.get("two_way_enabled")):
+        if not two_way:
             edits = []
 
         for edit in edits:

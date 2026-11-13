@@ -211,3 +211,20 @@ def test_imported_geometry_push_respects_the_two_way_gate():
     src = inspect.getsource(live_sync._sync_timer)
     assert "push=True)" not in src, "the every-pass geometry check pushes unconditionally"
     assert "may_push_edits" in src
+
+
+def test_deletions_and_additions_respect_the_two_way_gate():
+    """With two-way editing off, Blender deletions must not erase SketchUp entities and new meshes must not be pushed.
+
+    The gate only covered the transform/material loop; the deletion loop and _push_new_meshes ran before it, so
+    those writes went through with the toggle off. The gate decision must precede both.
+    """
+    import inspect
+    from blender_plugin import live_sync
+
+    src = inspect.getsource(live_sync._push_pending_edits)
+    gate = src.index("may_push_edits")
+    dels = src.index("_push_delete(pid, sync_push)")
+    adds = src.index("_push_new_meshes(sync_push, bpy)")
+    assert gate < dels, "the deletion loop runs before the gate"
+    assert gate < adds, "new-mesh pushes run before the gate"
