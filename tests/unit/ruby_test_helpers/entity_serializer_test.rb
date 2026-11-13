@@ -169,6 +169,8 @@ module StubBuilders
     face = Sketchup::Face.new
     # Like SketchUp, a mesh only has back UVs when asked for them (flag 2 = UVQBack); otherwise they read 0.
     face.define_singleton_method(:mesh) do |flags|
+      # mesh_raises makes the serializer's real rescue run: a failure inside mesh must become an Error entry.
+      raise 'mesh unreadable (forced for the rescue test)' if data['mesh_raises']
       md = data['mesh'] || {}
       md = md.merge('back_uvs' => md.fetch('uvs', []).map { [0.0, 0.0] }) if (flags & 2).zero?
       StubBuilders.build_mesh(md)

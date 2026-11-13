@@ -411,6 +411,23 @@ class TestEntitySerializer:
 
     # ── Error rescue ──────────────────────────────────────────────────
 
+    def test_serialize_error_rescue_forces_an_error_entry(self):
+        """A failure inside a real serializer call must come back as an Error entry, not an exception.
+
+        The earlier rescue test only asserted the success path, so the Error branch was never exercised. This
+        stub makes the face's mesh raise, which the serializer's rescue must turn into {type: 'Error'}; the
+        importer then reports the drop (skipped_entity_warnings).
+        """
+        entity = {
+            "type": "Face",
+            "persistent_id": 77,
+            "mesh_raises": True,
+            "outer_loop": [],
+        }
+        result = self._run("serialize", entity)
+        assert result["type"] == "Error"
+        assert result["message"]
+
     def test_serialize_error_rescue(self):
         """Exception during serialization returns {type: 'Error', message: ...}."""
         entity = {
