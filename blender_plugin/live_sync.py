@@ -317,6 +317,14 @@ def _reshape_changed_faces(ob, sync_push):
             ok = False
             continue
         loop = _face_loop(ob, polys)
+        if len(loop) >= 3 and _is_concave(loop):
+            # SketchUp's add_face stores a concave loop as a different, self-intersecting boundary, so a
+            # reshape of a concave face pushes the wrong outline. Refuse it and say so: the edit stays in Blender.
+            _logger.warning(f"face {face_pid} of {ob.name} is concave; not reshaped (SketchUp cannot store it faithfully)")
+            sync_push.add_warning(
+                f"{ob.name}: concave face edit reverted to the SketchUp geometry (SketchUp cannot store a concave face faithfully)")
+            ok = False
+            continue
         face_pid = current.get(face_pid, face_pid)
         if len(loop) < 3:
             # The boundary could not be walked as one loop (for example a face with a hole). Refuse to push
@@ -337,6 +345,35 @@ def _reshape_changed_faces(ob, sync_push):
             ok = False
             _logger.warning(f"reshape push failed for face {face_pid} of {ob.name}", exc_info=True)
     return ok
+
+
+def _is_concave(loop):
+    """True when a polygon has a reflex vertex: its turns do not all share one orientation.
+
+    The loop is in world space and is treated in the plane it lies in, using its first three points for the
+    normal. Collinear turns are ignored. A convex polygon turns the same way at every vertex; a concave one
+    turns both ways.
+    """
+    n = len(loop)
+    if n < 4:
+        return False
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    # Project onto the plane of the face: pick the two axes with the largest spread.
+    xs = [p[0] for p in loop]
+    ys = [p[1] for p in loop]
+    zs = [p[2] for p in loop]
+    spread = {"x": max(xs) - min(xs), "y": max(ys) - min(ys), "z": max(zs) - min(zs)}
+    a, b = sorted(spread, key=spread.get, reverse=True)[:2]
+    pts = [(p["xyz".index(a)], p["xyz".index(b)]) for p in loop]
+    signs = set()
+    for i in range(n):
+        c = cross(pts[i], pts[(i + 1) % n], pts[(i + 2) % n])
+        if abs(c) > 1e-12:
+            signs.add(c > 0)
+    return len(signs) > 1
 
 
 def _face_loop(ob, polys):
