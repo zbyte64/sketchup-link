@@ -23,6 +23,7 @@ REPO = os.path.normpath(os.path.join(HERE, "..", ".."))
 if REPO not in sys.path:
     sys.path.insert(0, REPO)
 
+sys.path.insert(0, HERE)
 import addon_utils  # noqa: E402
 import bpy  # noqa: E402
 
@@ -72,13 +73,10 @@ def mcp_eval(code):
 
 
 def reset_reference():
-    src = open(os.path.join(REPO, "tests", "bdd", "conftest.py"), encoding="utf-8").read()
-    purge = re.search(r'_PURGE_ALL = \((.*?)\n\)', src, re.S).group(1)
-    code = "".join(re.findall(r'"((?:[^"\\]|\\.)*)"', purge))
-    reply = mcp_eval(code)
-    if '"0,0,0,0"' not in reply:
-        raise RuntimeError(f"reference reset incomplete: {reply[-160:]}")
-    post("/test_model")
+    """The shared reset (tests/integration/reference_reset.py): purge, verify, rebuild."""
+    import reference_reset
+    reference_reset.reset()
+    reference_reset.verify()
 
 
 def u_face_in_model():

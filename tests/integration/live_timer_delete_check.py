@@ -21,6 +21,7 @@ REPO = os.path.normpath(os.path.join(HERE, "..", ".."))
 if REPO not in sys.path:
     sys.path.insert(0, REPO)
 
+sys.path.insert(0, HERE)
 import addon_utils  # noqa: E402
 import bpy  # noqa: E402
 
@@ -43,18 +44,10 @@ def post(path, body=None):
 
 
 def reset_reference():
-    """Full purge over the MCP tunnel, then rebuild. The only reset that leaves the model clean."""
-    src = open(os.path.join(REPO, "tests", "bdd", "conftest.py"), encoding="utf-8").read()
-    purge = re.search(r'_PURGE_ALL = \((.*?)\n\)', src, re.S).group(1)
-    code = "".join(re.findall(r'"((?:[^"\\]|\\.)*)"', purge))
-    mcp = socket.create_connection(("127.0.0.1", int(os.environ.get("MCP_LOCAL_PORT", "9878"))), timeout=60)
-    mcp.sendall((json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-                             "params": {"name": "eval_ruby", "arguments": {"code": code}}}) + "\n").encode())
-    reply = mcp.recv(65536).decode()
-    mcp.close()
-    if '"0,0,0,0"' not in reply:
-        raise RuntimeError(f"reference reset incomplete: {reply[-160:]}")
-    post("/test_model", None)
+    """The shared reset (tests/integration/reference_reset.py): purge, verify, rebuild."""
+    import reference_reset
+    reference_reset.reset()
+    reference_reset.verify()
 
 addon_utils.enable("blender_plugin", default_set=True, persistent=False)
 from blender_plugin import edit_capture as ec  # noqa: E402
@@ -87,18 +80,10 @@ try:
     if pid in ec.tracker()._synced:
         fail(f"the timer did not forget the erased id {pid}")
 
-    # Restore with the same full purge the e2e fixture runs over the MCP tunnel, then rebuild.
-    src = open(os.path.join(REPO, "tests", "bdd", "conftest.py"), encoding="utf-8").read()
-    purge = re.search(r'_PURGE_ALL = \((.*?)\n\)', src, re.S).group(1)
-    purge_code = "".join(re.findall(r'"((?:[^"\\]|\\.)*)"', purge))
-    mcp = socket.create_connection(("127.0.0.1", int(os.environ.get("MCP_LOCAL_PORT", "9878"))), timeout=60)
-    mcp.sendall((json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-                             "params": {"name": "eval_ruby", "arguments": {"code": purge_code}}}) + "\n").encode())
-    reply = mcp.recv(65536).decode()
-    mcp.close()
-    if '"0,0,0,0"' not in reply:
-        fail(f"reference reset incomplete: {reply[-160:]}")
-    post("/test_model", None)
+    # Restore through the shared reset (purge, verify, rebuild).
+    import reference_reset
+    reference_reset.reset()
+    reference_reset.verify()
 
 except SystemExit:
     raise

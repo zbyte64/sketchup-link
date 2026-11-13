@@ -59,13 +59,10 @@ def mcp_eval(code):
 
 
 def reset_reference():
-    src = open(os.path.join(REPO, "tests", "bdd", "conftest.py"), encoding="utf-8").read()
-    purge = re.search(r'_PURGE_ALL = \((.*?)\n\)', src, re.S).group(1)
-    code = "".join(re.findall(r'"((?:[^"\\]|\\.)*)"', purge))
-    reply = mcp_eval(code)
-    if '"0,0,0,0"' not in reply:
-        raise RuntimeError(f"reference reset incomplete: {reply[-160:]}")
-    post("/test_model", {})
+    """The shared reset (tests/integration/reference_reset.py): purge, verify, rebuild."""
+    import reference_reset
+    reference_reset.reset()
+    reference_reset.verify()
 
 
 def group_faces(d):

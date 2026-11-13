@@ -21,6 +21,7 @@ REPO = os.path.normpath(os.path.join(HERE, "..", ".."))
 if REPO not in sys.path:
     sys.path.insert(0, REPO)
 
+sys.path.insert(0, HERE)
 import addon_utils  # noqa: E402
 import bpy  # noqa: E402
 
@@ -83,22 +84,13 @@ names_after = [e.get("persistent_id") for e in get_model().get("entities", [])]
 if pid in names_after:
     fail(f"SketchUp still has entity {pid} after the delete push")
 
-# Restore the reference model with the full reset the e2e fixture uses: purge over the MCP tunnel
-# (erases entities, definitions, materials and pages), then rebuild. A bare rebuild stacks duplicates.
-import socket  # noqa: E402
-
-src = open(os.path.join(REPO, "tests", "bdd", "conftest.py"), encoding="utf-8").read()
-purge = re.search(r'_PURGE_ALL = \((.*?)\n\)', src, re.S).group(1)
-purge_code = "".join(re.findall(r'"((?:[^"\\]|\\.)*)"', purge))
-mcp = socket.create_connection(("127.0.0.1", int(os.environ.get("MCP_LOCAL_PORT", "9878"))), timeout=60)
-mcp.sendall((json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-                         "params": {"name": "eval_ruby", "arguments": {"code": purge_code}}}) + "\n").encode())
-reply = mcp.recv(65536).decode()
-mcp.close()
-if '"0,0,0,0"' not in reply:
-    fail(f"reference reset incomplete after the delete check: {reply[-160:]}")
-if post("/test_model", None) != 200:
-    fail("could not rebuild the reference model after the delete check")
+# Restore the reference model through the shared reset (purge, verify, rebuild).
+import reference_reset  # noqa: E402
+try:
+    reference_reset.reset()
+    reference_reset.verify()
+except RuntimeError as e:
+    fail(f"reference restore failed after the delete check: {e}")
 
 print(f"LIVE-DELETE-PUSH OK: Blender delete of {pid} was detected and erased in SketchUp")
 sys.exit(0)
