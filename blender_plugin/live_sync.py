@@ -200,6 +200,10 @@ def _sync_timer() -> "float | None":
         except Exception:
             _logger.debug("viewport follow skipped", exc_info=True)
         state["failures"] = 0
+        if state.get("import_notified"):
+            from . import sync_push as _sp_ok
+            _sp_ok.add_warning("Live sync recovered; imports are succeeding again")
+            state["import_notified"] = False
         # Record the baseline from the geometry this import just built. Checking only before the import
         # would miss a freshly imported object: its first baseline would never be taken.
         try:
@@ -214,6 +218,12 @@ def _sync_timer() -> "float | None":
             f"live sync import failed (consecutive={state['failures']}): {e}",
             exc_info=True,
         )
+        from . import sync_push as _sp_if
+        from .sync_push import poll_failure_notice
+        if poll_failure_notice(state["failures"], bool(state.get("import_notified"))) == "dead":
+            _sp_if.add_warning(
+                f"Live sync imports keep failing ({state['failures']} in a row); the model may be stale: {e}")
+            state["import_notified"] = True
 
     return _next_delay(state)
 
