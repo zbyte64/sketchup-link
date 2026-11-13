@@ -73,6 +73,31 @@ sides agree on) provides this, the same mechanism as milestone 1's baseline.
 - **Large pushes.** A dense mesh edit can produce many control calls per poll. Batched
   per poll, with failures reported per face, not all-or-nothing.
 
+## Limitations (as built)
+
+These are measured failures or unbuilt parts, recorded so the doc does not claim more than the code does.
+
+1. **Concave faces cannot be reshaped faithfully.** The boundary walk recovers a concave face's true outline,
+   verified on a U-shaped face. But SketchUp's `add_face`, given that loop in any order, stores a self-intersecting
+   polygon with the same vertices and area and the wrong boundary (10 edges differ). Drawing the boundary as edges
+   forms no face. The live check `live_timer_concave_check` fails on this and is kept as the record. Options not yet
+   decided: split a concave face into convex pieces SketchUp builds correctly, or refuse concave reshapes and keep
+   them as warned, Blender-only edits. The current code does not refuse them; it pushes the wrong outline. This is
+   the most important open defect and should be closed before the reshape route is relied on for concave geometry.
+
+2. **Top-level loose faces are not reshaped.** A face not inside a group or component is imported into
+   `_(Loose Entity)`, which carries no SketchUp identity, and the timer only pushes identified objects. Edits to
+   loose top-level geometry are therefore not pushed.
+
+3. **Faces with holes are refused.** A face with an inner loop has two boundary loops, so no single outline can be
+   walked. The timer does not push such a face and reports it.
+
+4. **Idle-pass cost is unmeasured.** The imported-geometry check runs on every timer pass, including passes with no new
+   snapshot. Its cost under a sustained poll loop has not been measured.
+
+5. **Only the reference geometry is exercised for reshape.** Multi-face edits, edits that add polygons to an imported
+   object, and vertex edits that move a face out of its plane are untested.
+
 ## Test plan
 
 - Unit: loop-based conversion (outer only, with holes, and a polygon that cannot express
