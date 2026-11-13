@@ -263,9 +263,10 @@ class SceneImporter:
             try:
                 self.skp_model = sketchup.Model.from_file(self.filepath)  # type: ignore[union-attr]
             except Exception as e:
+                # Nothing was read, so nothing was imported: report that, not a successful FINISHED.
                 logger.warning(f"Error reading input file: {self.filepath}: {e}")
                 tag_new_datablocks(before_objects, before_collections)
-                return {"FINISHED"}
+                return {"CANCELLED"}
 
         # Start stopwatch for camera import
         logger.info("=== Importing Sketchup scenes and views as Blender Cameras ===")

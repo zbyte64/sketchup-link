@@ -149,3 +149,16 @@ def test_export_does_not_report_finished_without_writing_a_file():
     src = _source()
     save = src[src.index("class SceneExporter"):src.index("def menu_func_import")]
     assert '{"FINISHED"}' not in save, "SceneExporter.save reports FINISHED but writes no file"
+
+
+def test_unreadable_file_import_does_not_report_finished():
+    """A file the SketchUp reader cannot open must not report a successful import.
+
+    The from_file failure branch logs a warning and returned FINISHED with no objects imported, so the user was told an
+    import succeeded when nothing was read. It must report CANCELLED.
+    """
+    src = _source()
+    branch = src[src.index("sketchup.Model.from_file(self.filepath)"):]
+    branch = branch[:branch.index("# Start stopwatch for camera import")]
+    assert '{"FINISHED"}' not in branch, "the unreadable-file branch reports FINISHED with nothing imported"
+    assert '{"CANCELLED"}' in branch
