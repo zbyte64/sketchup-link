@@ -7,6 +7,10 @@ Run every live Blender check in isolation, on a clean reference model, and repor
 Before each check the reference model is reset and verified, so no check inherits another's state. Each
 check runs in its own Blender process. A check passes only when its exit code is 0 AND it printed its
 "OK" verdict line: a crash with exit 0, or a run that printed a FAIL, both count as failures.
+
+Every tests/integration/live_*_check.py and gui_*_check.py is run. live_* run Blender in the background (or on
+the host, if the check says it "Runs on the host"); gui_* run Blender's interface on a virtual display in the
+debug image (sketchup-link-blender-debug:<version>), so screen-capture checks need no long-lived container.
 """
 import os
 import re
@@ -28,12 +32,16 @@ _ORDER = [
     "live_complex_import_check", "live_varied_import_check",
     "live_timer_hole_check",
 ]
-_ON_DISK = sorted(f[:-3] for f in os.listdir(HERE) if re.fullmatch(r"live_\w+_check\.py", f))
+_ON_DISK = sorted(f[:-3] for f in os.listdir(HERE) if re.fullmatch(r"(live|gui)_\w+_check\.py", f))
 CHECKS = [c for c in _ORDER if c in _ON_DISK] + [c for c in _ON_DISK if c not in _ORDER]
 _MISSING = [c for c in _ORDER if c not in _ON_DISK]
 if _MISSING:
     raise SystemExit(f"run_live_checks: listed checks missing on disk: {_MISSING}")
-OK_LINE = re.compile(r"^LIVE-[A-Z-]+ OK")
+OK_LINE = re.compile(r"^(LIVE|GUI)-[A-Z-]+ OK")
+# gui_* checks run Blender with its interface on the Xvfb display that the debug image's entrypoint starts, in a
+# throwaway container. They use the default bridge network, not host networking, because that entrypoint also
+# starts sshd (22) and x11vnc (5900), which must not bind on the host; SketchUp is reached at the bridge gateway.
+GUI_HOST = os.environ.get("SKETCHUP_LINK_GUI_HOST", "172.17.0.1")
 
 
 def runs_on_host(check):
@@ -45,6 +53,10 @@ def runs_on_host(check):
 def run(version, check):
     if runs_on_host(check):
         cmd = [sys.executable, os.path.join(HERE, f"{check}.py")]
+    elif check.startswith("gui_"):
+        cmd = ["docker", "run", "--rm", "-e", "DISPLAY=:99", "-e", f"SKETCHUP_LINK_HOST={GUI_HOST}",
+               "-v", f"{REPO}:/plugin", "-w", "/plugin", f"sketchup-link-blender-debug:{version}",
+               "blender", "--factory-startup", "--python", f"tests/integration/{check}.py"]
     else:
         cmd = ["docker", "run", "--rm", "--network", "host", "-v", f"{REPO}:/plugin", "-w", "/plugin",
                f"sketchup-link-blender:{version}", "blender", "--background", "--factory-startup",

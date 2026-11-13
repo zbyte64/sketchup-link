@@ -80,3 +80,17 @@ a partial change inside its average. Verified controls:
 - factory blue to red: 99.6% of cube pixels changed, PASS;
 - a frame against itself: 0% changed, FAIL;
 - a partial change (top third of the cube recoloured): 33.9% changed, FAIL at the default threshold.
+
+## GUI checks in the normal runner
+
+`tests/integration/gui_*_check.py` run through `tests/integration/run_live_checks.py` like the live checks. Each
+runs in a throwaway `sketchup-link-blender-debug:<version>` container: the entrypoint starts Xvfb on `:99`, Blender
+runs with its interface, and the check captures the screen itself. No long-lived debug container is needed.
+
+- `gui_visualcube_check.py` changes SketchUp's Blue to red and requires the cube's own pixels to change on screen
+  (via `integration/scripts/visual_compare.py`, shared with `visualcube_compare.sh`). Negative control:
+  `GUI_VC_SKIP_CHANGE=1` must fail (0% changed).
+- It uses Solid shading coloured by material. Material Preview on this software-rendered display was still
+  "Compiling EEVEE engine shaders" after 8 s and drew nothing; Solid needs no shader compile.
+- The containers use the bridge network and reach SketchUp at `172.17.0.1` (override with
+  `SKETCHUP_LINK_GUI_HOST`), because the entrypoint also starts sshd and x11vnc, which must not bind host ports.
