@@ -360,35 +360,45 @@ class JsonFace:
 # Entities container
 # ---------------------------------------------------------------------------
 
-def _attach_edges(face: dict, edges: list) -> dict:
-    """Return the face dict with _edges: the snapshot edges whose both ends lie on the face's outer loop.
+def _point_key(p) -> tuple:
+    """A point as a rounded (x, y, z) tuple. Loop points are {x,y,z} dicts; edge endpoints are [x,y,z] lists."""
+    if isinstance(p, dict):
+        p = (p["x"], p["y"], p["z"])
+    return tuple(round(float(c), 6) for c in p)
 
-    Matching is by the metre coordinates Ruby already emits for both edges and faces (rounded to 1e-6), so
-    no identifier is needed. An edge is on the boundary when its two endpoints are consecutive loop vertices.
+
+def _edge_table(edges: list) -> dict:
+    """Map each boundary-candidate edge (as a frozenset of its two endpoint keys) to its smoothing flag.
+
+    Built once per entity list, so attaching edges to N faces costs O(edges + boundary points), not
+    O(faces x edges). Edges without exactly two endpoints are skipped.
     """
-    loop = face.get("outer_loop") or []
-    if len(loop) < 2 or not edges:
-        return {**face, "_edges": []}
-
-    def key(p):
-        # Loop points are {x,y,z} dicts; edge endpoints are [x,y,z] lists. Both reduce to the same tuple.
-        if isinstance(p, dict):
-            p = (p["x"], p["y"], p["z"])
-        return tuple(round(float(c), 6) for c in p)
-
-    pts = [key(p) for p in loop]
-    boundary = set()
-    for i in range(len(pts)):
-        a, b = pts[i], pts[(i + 1) % len(pts)]
-        boundary.add(frozenset((a, b)))
-    attached = []
+    table = {}
     for e in edges:
         ends = e.get("vertices") or []
         if len(ends) != 2:
             continue
-        pair = frozenset((key(ends[0]), key(ends[1])))
-        if pair in boundary:
-            attached.append(_JsonEdge(e.get("smooth", False)))
+        key = frozenset((_point_key(ends[0]), _point_key(ends[1])))
+        # An edge may be listed twice; it is smooth if either entry says so.
+        table[key] = table.get(key, False) or bool(e.get("smooth", False))
+    return table
+
+
+def _attach_edges(face: dict, table: dict) -> dict:
+    """Return the face dict with _edges: the table edges that lie on the face's outer loop.
+
+    An edge is on the boundary when its two endpoints are consecutive loop vertices. Matching is by the rounded
+    metre coordinates Ruby emits for both edges and faces, so no identifier is needed.
+    """
+    loop = face.get("outer_loop") or []
+    if len(loop) < 2 or not table:
+        return {**face, "_edges": []}
+    pts = [_point_key(p) for p in loop]
+    attached = []
+    for i in range(len(pts)):
+        key = frozenset((pts[i], pts[(i + 1) % len(pts)]))
+        if key in table:
+            attached.append(_JsonEdge(table[key]))
     return {**face, "_edges": attached}
 
 
@@ -403,8 +413,8 @@ class JsonEntities:
 
     @property
     def faces(self):
-        edges = [e for e in self._list if e.get("type") == "Edge"]
-        return [JsonFace(_attach_edges(e, edges)) for e in self._list if e.get("type") == "Face"]
+        table = _edge_table([e for e in self._list if e.get("type") == "Edge"])
+        return [JsonFace(_attach_edges(e, table)) for e in self._list if e.get("type") == "Face"]
 
     @property
     def groups(self):

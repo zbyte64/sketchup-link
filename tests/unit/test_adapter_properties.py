@@ -94,3 +94,41 @@ def test_smooth_edge_off_the_boundary_does_not_smooth_the_face():
     square = _square_face(3)
     elsewhere = _edge([5, 5, 0], [6, 5, 0], True)
     assert _smooth_flags([square, elsewhere]) == {3: False}
+
+
+def test_attaching_edges_does_not_rescan_every_edge_per_face():
+    """Attaching boundary edges to N faces must not normalise every edge's endpoints once per face.
+
+    A 64x64 grid has 4096 faces and about 8320 edges. Normalising each edge once per face is ~34M
+    point conversions and took minutes in Blender; the edge endpoints must be normalised once.
+    The count is of work done, not wall-clock time, so the test is deterministic.
+    """
+    import blender_plugin.live_adapter as la
+
+    calls = {"n": 0}
+
+    faces, edges = [], []
+    n = 16
+    for i in range(n):
+        for j in range(n):
+            x, y = i * 1.0, j * 1.0
+            loop = [{"x": x, "y": y, "z": 0}, {"x": x + 1, "y": y, "z": 0},
+                    {"x": x + 1, "y": y + 1, "z": 0}, {"x": x, "y": y + 1, "z": 0}]
+            faces.append({"type": "Face", "persistent_id": len(faces) + 1, "outer_loop": loop})
+            for a, b in [((x, y, 0), (x + 1, y, 0)), ((x + 1, y, 0), (x + 1, y + 1, 0))]:
+                edges.append({"type": "Edge", "vertices": [list(a), list(b)], "smooth": True})
+    snapshot = faces + edges
+
+    # Count endpoint reads by wrapping each edge so every access to its vertices is counted.
+    class CountingEdge(dict):
+        def get(self, k, d=None):
+            if k == "vertices":
+                calls["n"] += 1
+            return super().get(k, d)
+
+    counted = [CountingEdge(e) for e in edges]
+    la.JsonEntities(faces + counted).faces
+    per_face_scans = calls["n"]
+    assert per_face_scans <= len(edges) + 2 * len(faces), (
+        f"each face rescans every edge: {per_face_scans} endpoint reads for {len(faces)} faces and {len(edges)} edges"
+    )
