@@ -101,3 +101,27 @@ def test_new_polygon_keys_are_the_difference():
 def test_no_new_polygons_when_unchanged():
     keys = {((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0))}
     assert new_polygon_keys(keys, keys) == set()
+
+
+def test_a_real_edit_just_above_the_tolerance_is_captured():
+    """Pins the tolerance from both sides: float noise is ignored, but a real sub-millimetre move is an edit.
+
+    The noise test alone would still pass if the tolerance were raised to a millimetre, which would silently
+    stop small real edits from reaching SketchUp. A move of 10 * TOL (10 micrometres) must be captured.
+    """
+    from blender_plugin.edit_capture import TOL
+
+    t = EditTracker()
+    t.record_sync(42, IDENT, RED)
+    nudged = [1, 0, 0, 10 * TOL, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    e = t.diff(42, nudged, RED)
+    assert e is not None and "transform" in e.fields
+
+
+def test_a_move_below_the_tolerance_is_not_an_edit():
+    from blender_plugin.edit_capture import TOL
+
+    t = EditTracker()
+    t.record_sync(42, IDENT, RED)
+    below = [1, 0, 0, TOL / 10, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    assert t.diff(42, below, RED) is None
