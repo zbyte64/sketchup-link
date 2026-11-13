@@ -141,3 +141,16 @@ def test_no_warning_when_every_entity_is_understood():
     from blender_plugin.live_adapter import skipped_entity_warnings
 
     assert skipped_entity_warnings([{"type": "Face", "persistent_id": 1, "outer_loop": []}]) == []
+
+
+def test_an_error_with_no_message_still_gives_a_readable_warning():
+    """An Error entry whose message is empty must still produce a sensible warning, never a bare blank.
+
+    The adapter falls back to 'unknown error' so the user is told something failed even when SketchUp gave no
+    reason. This pins that fallback, which had no coverage.
+    """
+    from blender_plugin.live_adapter import skipped_entity_warnings
+
+    warnings = skipped_entity_warnings([{"type": "Error", "message": "", "persistent_id": None}])
+    assert len(warnings) == 1
+    assert "unknown error" in warnings[0]
