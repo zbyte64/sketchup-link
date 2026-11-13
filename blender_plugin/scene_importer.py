@@ -284,8 +284,9 @@ class SceneImporter:
                     logger.info(f"Importing named SketchUp scene '{s.name}'")
                     self.scene = s
 
-                    # Skip s.layers which are the invisible layers
-                    self.layers_skip = [l for l in s.layers]
+                    # Hidden layers come from the model's own flags, the same source as the live import, so a named
+                    # scene and live sync exclude the same layers. (JsonScene exposes no layers attribute.)
+                    self.layers_skip = hidden_layers_for_live(self.skp_model)
             if not self.layers_skip:
                 logger.info("Scene: '{}' didn't have any invisible layers.".format(options["import_scene"]))
             if self.layers_skip != []:

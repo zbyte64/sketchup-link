@@ -126,3 +126,15 @@ def test_material_alpha_falls_back_to_colour_alpha_without_opacity():
 def test_material_alpha_clamps_out_of_range_opacity():
     assert _material_alpha()(_Mat(1.7), 255) == 1.0
     assert _material_alpha()(_Mat(-0.2), 255) == 0.0
+
+
+def test_named_scene_import_takes_hidden_layers_from_the_model():
+    """A named-scene import must exclude hidden layers the same way the live import does.
+
+    The scene branch used to read s.layers, which the adapter's JsonScene does not expose (AttributeError on any
+    named-scene import). Hidden layers come from the model's own layer flags, shared with the live path, so both
+    paths agree. This asserts the scene branch reads the model's hidden layers and not a scene attribute.
+    """
+    src = _source()
+    assert "s.layers" not in src, "the scene branch reads s.layers, which JsonScene does not expose"
+    assert "hidden_layers_for_live" in src
