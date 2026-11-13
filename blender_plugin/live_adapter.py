@@ -308,6 +308,11 @@ class JsonFace:
         self._d = d
 
     @property
+    def persistent_id(self):
+        """SketchUp persistent id of this face: the attribution the importer records per triangle."""
+        return self._d.get("persistent_id")
+
+    @property
     def material(self):
         name = self._d.get("material")
         return _NameOnly(name) if name else None

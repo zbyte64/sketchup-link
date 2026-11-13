@@ -103,6 +103,16 @@ def _default_prefs():
 
 
 # Custom-property key marking every object/collection the importer creates.
+def _face_pid(face):
+    """The SketchUp persistent_id of a face, or 0 when the source does not provide one.
+
+    Both the live JSON faces and the Cython SLAPI faces expose it; anything else is attributed as 0
+    so an unknown origin is visible as an orphan rather than silently assigned an id.
+    """
+    pid = getattr(face, "persistent_id", None)
+    return int(pid) if isinstance(pid, int) else 0
+
+
 IMPORT_MARKER = "skp_link_import"
 
 
@@ -651,6 +661,7 @@ class SceneImporter:
         verts = []
         loops_vert_idx = []
         mat_index = []
+        face_index = []  # SketchUp persistent_id of the face each triangle came from (0 if unknown)
         smooth = []
         mats = keep_offset()
         seen = keep_offset()
@@ -721,6 +732,7 @@ class SceneImporter:
 
                 smooth.append(smooth_edge)
                 mat_index.append(mat_number)
+                face_index.append(_face_pid(f))
 
         if len(verts) == 0:
             return None, False
@@ -771,6 +783,9 @@ class SceneImporter:
         me.polygons.foreach_set("loop_start", loop_start)
         me.polygons.foreach_set("loop_total", loop_total)
         me.polygons.foreach_set("material_index", mat_index)
+        if face_index:
+            layer = me.attributes.new("skp_face_id", "INT", "FACE")
+            layer.data.foreach_set("value", [int(v) for v in face_index])
         me.polygons.foreach_set("use_smooth", smooth)
 
         if uvs_used:
