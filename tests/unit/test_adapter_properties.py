@@ -204,3 +204,29 @@ def test_live_import_excludes_hidden_layers():
             "entities": [], "materials": [], "component_definitions": {}}
     hidden = hidden_layers_for_live(JsonModel(snap))
     assert [l.name for l in hidden] == ["Hidden"]
+
+
+def test_every_snapshot_attribute_the_importer_reads_exists_on_the_adapter():
+    """Guards the defect class behind the s.layers crash: an importer reading an attribute its adapter lacks.
+
+    The importer's snapshot-facing reads are listed here and checked against the adapter classes, so a future
+    change that reads a new attribute the adapter does not define fails the suite instead of crashing a live
+    import. JsonModel.close is deliberately absent: the importer only references it in a commented-out line.
+    """
+    import blender_plugin.live_adapter as la
+
+    required = {
+        "JsonInstance": ["hidden", "layer", "material", "definition", "transform", "name", "persistent_id"],
+        "JsonGroup": ["hidden", "layer", "material", "entities", "transform", "name", "persistent_id"],
+        "JsonFace": ["material", "back_material", "tessfaces", "st_scale", "edges", "persistent_id"],
+        "JsonEntities": ["faces", "groups", "instances"],
+        "JsonMaterial": ["name", "color", "texture", "opacity"],
+        "JsonLayer": ["name", "visible"],
+        "JsonScene": ["name", "camera"],
+        "JsonModel": ["entities", "scenes", "materials", "layers", "camera",
+                      "component_definitions", "component_definition_as_dict", "shadow_info"],
+    }
+    for cls_name, attrs in required.items():
+        cls = getattr(la, cls_name)
+        missing = [a for a in attrs if not hasattr(cls, a)]
+        assert not missing, f"{cls_name} lacks {missing}, which the importer reads"
