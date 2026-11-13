@@ -55,10 +55,11 @@ module SketchupLink
       current_tcp    = Sketchup.read_default(EXTENSION_ID, 'use_tcp', DEFAULT_USE_TCP)
       current_socket = Sketchup.read_default(EXTENSION_ID, 'socket_path', DEFAULT_SOCKET_PATH)
       current_port   = Sketchup.read_default(EXTENSION_ID, 'tcp_port', DEFAULT_TCP_PORT)
+      current_two_way = Sketchup.read_default(EXTENSION_ID, 'two_way_sync', false)
 
-      prompts  = ['Use TCP:', 'Socket Path:', 'TCP Port:']
-      defaults = [current_tcp ? 'Yes' : 'No', current_socket, current_port.to_s]
-      dropdown = ['Yes|No', '', '']
+      prompts  = ['Use TCP:', 'Socket Path:', 'TCP Port:', 'Two-way editing (Blender edits written into SketchUp):']
+      defaults = [current_tcp ? 'Yes' : 'No', current_socket, current_port.to_s, current_two_way ? 'Yes' : 'No']
+      dropdown = ['Yes|No', '', '', 'No|Yes']
 
       results = UI.inputbox(prompts, defaults, dropdown, 'Configure SketchUp Link Connection')
       return unless results  # user cancelled
@@ -66,6 +67,8 @@ module SketchupLink
       use_tcp    = results[0] == 'Yes'
       socket_path = results[1].strip
       tcp_port   = results[2].to_i
+      two_way    = SketchupLink::TwoWaySync.enabled?(results[3] == 'Yes')
+      Sketchup.write_default(EXTENSION_ID, 'two_way_sync', two_way)
 
       # Validate Unix socket path
       unless use_tcp

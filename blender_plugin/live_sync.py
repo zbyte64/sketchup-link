@@ -133,6 +133,9 @@ def _sync_timer() -> "float | None":
     # made since the last sync would otherwise be overwritten before it is sent.
     _push_pending_edits()
 
+    # The two-way editing toggle is reported by SketchUp in the snapshot. Off unless the snapshot says true.
+    _sync_state["two_way_enabled"] = (latest or {}).get("two_way_enabled") is True
+
     if _is_stale(latest):
         # Fetched before this pass's pushes: importing it would put back what the user just changed, for one
         # poll interval. Skip it; the next poll brings SketchUp's state with the pushes applied.
@@ -249,6 +252,11 @@ def _push_pending_edits():
                     return SketchUpState(transform=tuple(transform) if transform is not None else None,
                                          color=None)
             return SketchUpState()
+
+        # Two-way editing is a SketchUp toggle, off by default. When it is off, Blender edits are not written into
+        # SketchUp: the sync keeps SketchUp's state and only reports the edit it did not apply.
+        if not sync_push.may_push_edits(_sync_state.get("two_way_enabled")):
+            edits = []
 
         for edit in edits:
             baseline = edit_capture.tracker()._synced.get(edit.persistent_id)

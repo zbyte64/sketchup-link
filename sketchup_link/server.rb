@@ -121,6 +121,9 @@ module SketchupLink
           no_textures: opts[:no_textures],
           binary_textures: opts[:binary_textures]
         )
+        payload['two_way_enabled'] = SketchupLink::TwoWaySync.enabled?(
+          Sketchup.read_default(EXTENSION_ID, 'two_way_sync', false)
+        )
         respond(client, 200, JSON.generate(payload))
         remove_client(client)
 

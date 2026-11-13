@@ -58,6 +58,7 @@ try:
     ls._sync_state["conn_config"] = {"mode": "TCP", "host": HOST, "port": PORT, "binary_textures": False}
     ls._sync_state["running"] = True
     ls._sync_state["queue"] = queue.SimpleQueue()
+    ls._sync_state["two_way_enabled"] = True  # exercises the two-way path on purpose
     run_timer()  # import: the imported groups now exist in Blender
 
     group = next((o for o in bpy.data.objects if o.type == "MESH" and o.name.startswith("G-VisualCube")), None)
@@ -71,6 +72,7 @@ try:
     group.location.x += SHIFT  # a real move in Blender, with no test-only bookkeeping
     # Blender evaluates the depsgraph (which queues the edit) on a view-layer update, as it does between frames.
     bpy.context.view_layer.update()
+    ls._sync_state["two_way_enabled"] = True  # exercises the two-way path on purpose
     run_timer()  # the live timer must detect and push it
 
     after_x = next(e["transformation"][3] for e in model()["entities"] if e.get("persistent_id") == pid)

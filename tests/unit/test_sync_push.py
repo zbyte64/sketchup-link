@@ -184,3 +184,16 @@ def test_first_pass_baseline_is_set_before_any_push():
     scene = {"Cube", "Camera"}
     set_baseline_for_first_pass(scene)
     assert new_geometry_candidates(scene, set_baseline_for_first_pass.__globals__["_baseline_names"]) == set()
+
+
+def test_two_way_editing_is_off_by_default_and_blocks_pushes():
+    """Two-way editing (Blender edits pushed into SketchUp) sits behind a toggle set in SketchUp.
+
+    With the toggle off, no Blender edit is pushed; the sync keeps SketchUp's state and only reports what it would
+    have changed. With it on, edits are pushed as before. Off is the default.
+    """
+    from blender_plugin.sync_push import may_push_edits
+
+    assert may_push_edits(two_way_enabled=False) is False
+    assert may_push_edits(two_way_enabled=True) is True
+    assert may_push_edits(two_way_enabled=None) is False

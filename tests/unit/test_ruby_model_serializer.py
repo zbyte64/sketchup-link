@@ -426,3 +426,21 @@ def test_layers_serialization():
     assert layer1["visible"] is False
     assert layer1["color"] == {"r": 200, "g": 50, "b": 50, "a": 255}
     assert "line_width" not in layer1  # not a Sketchup::Layer method on this version
+
+
+class TestTwoWayFlag:
+    """The two-way editing toggle is read from SketchUp settings; only an explicit true turns it on."""
+
+    def _flag(self, value):
+        result = run_ruby("two_way_flag_test.rb", [{"op": "flag", "value": value}])
+        return result["results"][0]["enabled"]
+
+    def test_default_is_off(self):
+        assert self._flag(None) is False
+
+    def test_explicit_true_turns_it_on(self):
+        assert self._flag(True) is True
+
+    def test_false_and_junk_stay_off(self):
+        assert self._flag(False) is False
+        assert self._flag("yes") is False

@@ -113,6 +113,15 @@ _warnings: list[str] = []
 MAX_WARNINGS = 20
 
 
+def may_push_edits(two_way_enabled) -> bool:
+    """Whether Blender edits may be pushed into SketchUp. Two-way editing is a toggle set in SketchUp.
+
+    Off unless explicitly enabled: a missing or unknown setting (None) keeps it off, so the default is SketchUp wins
+    and Blender edits are only reported, not written back.
+    """
+    return two_way_enabled is True
+
+
 def conflict_warning(obj_name: str, stale: bool) -> str:
     """The sync warning for an imported object's edit that could not be pushed.
 
