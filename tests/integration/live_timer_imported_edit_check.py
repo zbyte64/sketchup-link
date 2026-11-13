@@ -3,10 +3,10 @@ Live timer imported-geometry check (gap 5 boundary). Runs INSIDE Blender:
 
     blender --background --factory-startup --python tests/integration/live_timer_imported_edit_check.py
 
-A vertex edit on an object imported from SketchUp cannot round-trip: the face is part of a group or
-component, and a per-vertex replace would destroy its identity and context. The transform of the same
-object does round-trip (milestone 1). This check asserts the boundary is explicit: the vertex edit is
-NOT pushed, SketchUp is left as it was, and the user is warned that the edit was kept in Blender only.
+A vertex edit on an object imported from SketchUp is pushed to SketchUp by reshaping the face in place
+(geometry/face/reshape), keeping its owning group. This check asserts that contract: the edit changes the
+SketchUp face, the group keeps its face count, and no "kept in Blender only" warning is raised. It replaces
+an earlier check that asserted the opposite, written before the reshape route existed.
 """
 import json
 import os
@@ -79,26 +79,36 @@ try:
     run_timer()
     sync_push._warnings.clear()
 
-    before = {e.get("persistent_id"): e.get("vertices") for e in model()["entities"] if e.get("type") == "Face"}
+    def group_faces_now():
+        grp = next(e for e in model()["entities"] if e.get("type") == "Group" and e.get("name") == "FurnitureGroup")
+        return {f["persistent_id"]: f.get("vertices") for f in grp["entities"] if f.get("type") == "Face"}
+
+    before = group_faces_now()
 
     # Move a vertex of an object imported from SketchUp (it carries its SketchUp id and import marker).
-    imported = next((o for o in bpy.data.objects if o.get("skp_persistent_id") and o.get("skp_link_import")
-                     and o.type == "MESH" and o.name.startswith("G-")), None)
+    # Select the FurnitureGroup by its SketchUp id, the object whose faces the check compares. Selecting by
+    # name prefix picked G-VisualCube, so the check edited an object SketchUp's group did not contain.
+    group_json = next(e for e in model()["entities"] if e.get("type") == "Group" and e.get("name") == "FurnitureGroup")
+    imported = next((o for o in bpy.data.objects if o.get("skp_persistent_id") == group_json["persistent_id"]), None)
     if imported is None:
         fail("no imported mesh found to edit")
     imported_name = imported.name
-    imported.data.vertices[0].co.x += 0.5
+    imported.data.vertices[imported.data.polygons[0].vertices[0]].co.x += 0.4
     imported.data.update()
     run_timer()
 
-    after = {e.get("persistent_id"): e.get("vertices") for e in model()["entities"] if e.get("type") == "Face"}
-    if after != before:
-        fail("a vertex edit on imported geometry changed SketchUp; it must stay in Blender only")
-    warned = [w for w in sync_push.warnings() if "imported" in w.lower() or "kept in blender" in w.lower()]
-    if not warned:
-        fail("the vertex edit on imported geometry was dropped without a warning")
+    after = group_faces_now()
+    if after == before:
+        fail("the vertex edit on imported geometry was not pushed: SketchUp's faces are unchanged")
+    if len(after) != len(before):
+        fail(f"the group's face count changed from {len(before)} to {len(after)}")
+    if set(after) == set(before):
+        fail("the group's faces kept their ids; a reshape must give the face a new id")
+    kept = [w for w in sync_push.warnings() if "kept in blender" in w.lower()]
+    if kept:
+        fail(f"the edit was pushed, yet still reported as kept in Blender: {kept}")
     status = 0
-    print(f"LIVE-TIMER-IMPORTED OK: vertex edit on {imported_name} kept in Blender and reported")
+    print(f"LIVE-TIMER-IMPORTED OK: vertex edit on {imported_name} pushed to SketchUp by reshape")
 finally:
     reset_reference()
 sys.exit(status)

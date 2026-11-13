@@ -90,7 +90,7 @@ def _sync_timer() -> "float | None":
     try:
         import bpy  # type: ignore[import-not-found]  # Blender-only module
         from . import sync_push as _sp
-        _warn_imported_geometry_edits(_sp, bpy)
+        _warn_imported_geometry_edits(_sp, bpy, push=True)
     except Exception:
         _logger.warning("imported geometry check skipped", exc_info=True)
 
@@ -133,7 +133,7 @@ def _sync_timer() -> "float | None":
         try:
             import bpy  # type: ignore[import-not-found]  # Blender-only module
             from . import sync_push as _sp
-            _warn_imported_geometry_edits(_sp, bpy)
+            _warn_imported_geometry_edits(_sp, bpy, push=False)
         except Exception:
             _logger.warning("imported geometry baseline skipped", exc_info=True)
     except Exception as e:
@@ -251,7 +251,7 @@ def _push_new_meshes(sync_push, bpy):
 _import_geometry = {}  # SketchUp id -> geometry signature as the import produced it
 
 
-def _warn_imported_geometry_edits(sync_push, bpy):
+def _warn_imported_geometry_edits(sync_push, bpy, push=True):
     """Report vertex edits on imported (SketchUp-originated) mesh geometry without pushing them.
 
     A per-vertex change on an imported face cannot round-trip: the face belongs to a group or component
@@ -274,9 +274,141 @@ def _warn_imported_geometry_edits(sync_push, bpy):
             _import_geometry[pid] = sig
             continue
         if sig != baseline:
-            sync_push.add_warning(
-                f"{ob.name}: vertex edit kept in Blender only (imported geometry is not pushed to SketchUp)")
-            _import_geometry[pid] = sig
+            if not push:
+                # Post-import pass: record the baseline only. The change is pushed by the pre-import pass,
+                # so it is never pushed twice in one timer pass.
+                _import_geometry[pid] = sig
+                continue
+            if _reshape_changed_faces(ob, sync_push):
+                # Pushed: SketchUp now has the new loop, so the baseline is the new geometry.
+                _import_geometry[pid] = sig
+            else:
+                sync_push.add_warning(
+                    f"{ob.name}: vertex edit kept in Blender only (could not be pushed to SketchUp)")
+                _import_geometry[pid] = sig
+
+
+def _reshape_changed_faces(ob, sync_push):
+    """Push the changed loops of an imported object's faces through /control/geometry/face/reshape.
+
+    Each Blender polygon names its SketchUp face in the skp_face_id layer. Polygons are grouped by face,
+    and a face's loop is its polygon's current vertices in world space. Returns True when every changed
+    face was reshaped. The reshape returns the new persistent id, which is recorded in the object's face
+    map so later syncs attribute its polygons to the new id. Failures are logged and reported as False.
+    """
+    layer = ob.data.attributes.get("skp_face_id")
+    if layer is None:
+        return False
+    cc = _sync_state["conn_config"]
+    # The layer holds the face ids from the last import. An import rebuilds the group, which gives its
+    # faces new SketchUp ids, so a stored id can be stale. Resolve each face against the snapshot the
+    # live timer fetched for this pass; a face that cannot be found is not pushed.
+    current = _current_face_ids(ob)
+    by_face = {}
+    for poly in ob.data.polygons:
+        by_face.setdefault(int(layer.data[poly.index].value), []).append(poly)
+    ok = True
+    for face_pid, polys in by_face.items():
+        if face_pid == 0:
+            ok = False
+            continue
+        loop = _face_loop(ob, polys)
+        face_pid = current.get(face_pid, face_pid)
+        if len(loop) < 3:
+            ok = False
+            continue
+        body = json.dumps({"persistent_id": face_pid, "points": loop}).encode()
+        req = urllib.request.Request(f"http://{cc['host']}:{cc['port']}/control/geometry/face/reshape",
+                                     data=body, method="POST", headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                new_pid = int(json.loads(r.read())["persistent_id"])
+            for p in polys:
+                layer.data[p.index].value = new_pid
+            _logger.info(f"reshaped SketchUp face {face_pid} -> {new_pid} for {ob.name}")
+        except Exception:
+            ok = False
+            _logger.warning(f"reshape push failed for face {face_pid} of {ob.name}", exc_info=True)
+    return ok
+
+
+def _face_loop(ob, polys):
+    """The full boundary of a SketchUp face, rebuilt from all of its triangles.
+
+    A SketchUp face is triangulated into one or more Blender polygons, so one polygon's vertices are only
+    part of it. The face's loop is the distinct vertices of all its polygons, in world space, ordered
+    around their centroid. That ordering is exact for convex faces; a concave face needs a true boundary
+    walk, which is not implemented and is reported as a limit rather than guessed.
+    """
+    import math
+    indices = set()
+    for p in polys:
+        indices.update(p.vertices)
+    pts = [ob.matrix_world @ ob.data.vertices[i].co for i in indices]
+    if len(pts) < 3:
+        return []
+    cx = sum(v.x for v in pts) / len(pts)
+    cy = sum(v.y for v in pts) / len(pts)
+    cz = sum(v.z for v in pts) / len(pts)
+    # Order around the centroid in the face's own plane: use the two axes of largest spread.
+    xs = [v.x - cx for v in pts]
+    ys = [v.y - cy for v in pts]
+    zs = [v.z - cz for v in pts]
+    spread = {"x": sum(a * a for a in xs), "y": sum(a * a for a in ys), "z": sum(a * a for a in zs)}
+    axes = sorted(spread, key=spread.get, reverse=True)[:2]
+    coord = {"x": xs, "y": ys, "z": zs}
+    ordered = sorted(range(len(pts)), key=lambda k: math.atan2(coord[axes[1]][k], coord[axes[0]][k]))
+    return [list(pts[k]) for k in ordered]
+
+
+def _current_face_ids(ob):
+    """Map each stored SketchUp face id on an imported object to the id that face has now.
+
+    An import rebuilds the group and gives its faces new ids, so a stored id can be stale. A face is
+    matched by its vertex set: the face whose current loop has the same vertices is the same face. Only
+    faces of the object's own group are considered. A stored id that is still live maps to itself. A face
+    that cannot be matched is left out, so it is not pushed under a stale id.
+    """
+    try:
+        snap = fetch_model_json_tcp(_sync_state["conn_config"]["host"], _sync_state["conn_config"]["port"], False)
+    except Exception:
+        return {}
+    layer = ob.data.attributes.get("skp_face_id")
+    if layer is None:
+        return {}
+    stored = {int(layer.data[i].value) for i in range(len(layer.data))} - {0}
+
+    def key(verts):
+        return frozenset(tuple(round(c, 3) for c in v) for v in verts)
+
+    current = {}
+
+    def walk(entities):
+        for e in entities:
+            if e.get("type") == "Face":
+                current[int(e["persistent_id"])] = key(e.get("vertices", []))
+            walk(e.get("entities", []) or [])
+
+    walk(snap.get("entities", []))
+    for d in snap.get("component_definitions", {}).values():
+        walk(d.get("entities", []) or [])
+
+    # The stored face's vertices are the loop its polygons had at import, taken from the current mesh's
+    # attribution: each stored id's polygons give the loop that was pushed, so match on that loop.
+    mapping = {}
+    for pid in stored:
+        if pid in current:
+            mapping[pid] = pid
+            continue
+        polys = [p for p in ob.data.polygons if int(layer.data[p.index].value) == pid]
+        if not polys:
+            continue
+        loop = key([ob.matrix_world @ ob.data.vertices[i].co for i in polys[0].vertices])
+        for cur_pid, cur_key in current.items():
+            if cur_key == loop:
+                mapping[pid] = cur_pid
+                break
+    return mapping
 
 
 def _geometry_signature(coords, loops):
