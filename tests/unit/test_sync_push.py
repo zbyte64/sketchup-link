@@ -154,3 +154,19 @@ def test_an_error_with_no_message_still_gives_a_readable_warning():
     warnings = skipped_entity_warnings([{"type": "Error", "message": "", "persistent_id": None}])
     assert len(warnings) == 1
     assert "unknown error" in warnings[0]
+
+
+def test_a_mesh_present_at_the_baseline_is_not_new_geometry():
+    """Untagged scene objects present when sync starts (the factory Cube, or any object the user did not add
+    during this session) are not new geometry and must not be pushed into SketchUp.
+
+    The repo's own intent: untagged objects are user data, never sync data (scene_importer 'Untagged user data is
+    never touched'; live_timer_stale_snapshot 'the timer would push [the factory Cube] as new geometry' is the
+    defect). Only objects added after the baseline are new geometry.
+    """
+    from blender_plugin.edit_capture import new_geometry_candidates
+
+    baseline = {"Cube", "Camera", "Light"}
+    now = {"Cube", "Camera", "Light", "MyNewBox"}
+    assert new_geometry_candidates(now, baseline) == {"MyNewBox"}
+    assert new_geometry_candidates(baseline, baseline) == set()

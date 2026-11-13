@@ -250,11 +250,18 @@ def _push_new_meshes(sync_push, bpy):
     """
     from . import edit_capture, geometry_push
     cc = _sync_state["conn_config"]
+    from . import edit_capture as _ec_new
+    # Only geometry added after the sync baseline is new user geometry. Scene objects already present when sync
+    # started (the factory Cube, untagged user data) are never pushed (see new_geometry_candidates).
+    baseline = _ec_new.sync_baseline_names()
+    added = _ec_new.new_geometry_candidates({o.name for o in bpy.data.objects}, baseline)
     for ob in list(bpy.data.objects):
         # Only user geometry is pushed. A tagged object already has an identity, and an object the
         # importer created carries IMPORT_MARKER (skp_link_import): pushing it back would echo SketchUp's
         # own geometry as new faces on every sync.
         if ob.type != "MESH" or "skp_persistent_id" in ob or ob.get("skp_link_import"):
+            continue
+        if ob.name not in added:
             continue
         me = ob.data
         coords = [tuple(ob.matrix_world @ v.co) for v in me.vertices]

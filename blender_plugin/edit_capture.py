@@ -161,6 +161,7 @@ def record_import_state() -> None:  # pragma: no cover - needs Blender
     """
     import bpy  # type: ignore[import-not-found]  # Blender-only module
 
+    _set_baseline_names({o.name for o in bpy.data.objects})
     for ob in bpy.data.objects:
         if ID_PROP in ob:
             _tracker.record_sync(int(ob[ID_PROP]), _object_transform(ob), _object_color(ob))
@@ -169,6 +170,29 @@ def record_import_state() -> None:  # pragma: no cover - needs Blender
 # ---------------------------------------------------------------------------
 # Structural edits (milestone 2): deletes and adds. Pure, so they are unit-testable.
 # ---------------------------------------------------------------------------
+
+# The object names present when the sync baseline was taken. Set by record_import_state (called after each import),
+# so anything the user adds afterwards is distinguishable from what was already in the scene.
+_baseline_names: set[str] = set()
+
+
+def sync_baseline_names() -> set[str]:
+    return set(_baseline_names)
+
+
+def _set_baseline_names(names) -> None:
+    global _baseline_names
+    _baseline_names = set(names)
+
+
+def new_geometry_candidates(now: set[str], baseline: set[str]) -> set[str]:
+    """Object names that were added after the sync baseline: the only objects that are new user geometry.
+
+    Anything already present when sync started (the factory Cube, or any other scene object the user did not add
+    this session) is scene scaffolding, not sync data, and must never be pushed into SketchUp.
+    """
+    return set(now) - set(baseline)
+
 
 def removed_ids(tracked: set[int], present: set[int]) -> set[int]:
     """Ids the tracker knows about that no longer exist in Blender: deletions made in Blender.
