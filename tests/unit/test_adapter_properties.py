@@ -253,3 +253,39 @@ def test_camera_view_matrix_degenerate_returns_none_not_crash():
 
     assert camera_view_matrix((0.0, 0.0, 5.0), (0.0, 0.0, 0.0), (0.0, 0.0, 1.0)) is None  # up parallel to view
     assert camera_view_matrix((1.0, 1.0, 1.0), (1.0, 1.0, 1.0), (0.0, 1.0, 0.0)) is None  # pos == target
+
+
+class _FakePrefs:
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
+def test_conn_config_defaults_without_prefs_are_unix():
+    """With no preferences (testing, or prefs not yet registered) the config must be complete and Unix-first."""
+    from blender_plugin.live_adapter import _build_conn_config, DEFAULT_SOCKET_PATH, TCP_DEFAULT_HOST, TCP_DEFAULT_PORT
+
+    cfg = _build_conn_config()
+    assert cfg["mode"] == "UNIX"
+    assert cfg["socket_path"] == DEFAULT_SOCKET_PATH
+    assert cfg["host"] == TCP_DEFAULT_HOST and cfg["port"] == TCP_DEFAULT_PORT
+    assert cfg["binary_textures"] is False
+
+
+def test_conn_config_maps_every_preference_field():
+    """Each preference field must land in the right config key; a renamed or swapped attr would silently
+    connect to the wrong transport."""
+    from blender_plugin.live_adapter import _build_conn_config
+
+    prefs = _FakePrefs(connection_mode="TCP", socket_path="/tmp/x.sock", tcp_host="10.0.0.2",
+                       tcp_port=9123, binary_textures=True)
+    cfg = _build_conn_config(prefs)
+    assert cfg == {"mode": "TCP", "socket_path": "/tmp/x.sock", "host": "10.0.0.2",
+                   "port": 9123, "binary_textures": True}
+
+
+def test_conn_config_falls_back_when_a_preference_is_missing():
+    from blender_plugin.live_adapter import _build_conn_config, TCP_DEFAULT_PORT
+
+    cfg = _build_conn_config(_FakePrefs(connection_mode="TCP"))
+    assert cfg["mode"] == "TCP"
+    assert cfg["port"] == TCP_DEFAULT_PORT
