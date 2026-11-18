@@ -65,7 +65,7 @@ bundle exec ruby package.rb
 
 2. In SketchUp, open **Extensions > Extension Manager**
 3. Click **Install Extension** and select the `.rbz` file
-4. The plugin starts automatically, exposing a Unix socket at `/tmp/sketchup-link.sock` (or `%TEMP%\sketchup-link.sock` on Windows). TCP mode is available on port 9876.
+4. The plugin starts automatically, exposing a Unix socket at `/tmp/sketchup-link.sock`. TCP mode is available on port 9877. On Windows, SketchUp's embedded Ruby has no `UNIXServer`, so the plugin always falls back to TCP (`%TEMP%\sketchup-link.sock` is never created there).
 
 ### How It Works
 

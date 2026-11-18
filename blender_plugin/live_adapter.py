@@ -26,7 +26,7 @@ _logger = get_logger(__name__)
 DEFAULT_SOCKET_PATH = os.path.join(tempfile.gettempdir(), "sketchup-link.sock")
 
 TCP_DEFAULT_HOST = "127.0.0.1"
-TCP_DEFAULT_PORT = 9876
+TCP_DEFAULT_PORT = 9877  # 9876 is taken by the su_mcp (SketchUp MCP Server) extension
 
 # ---------------------------------------------------------------------------
 # Transport

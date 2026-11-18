@@ -87,7 +87,7 @@ module SketchupLink
       return unless idx
 
       @pending.delete(client)
-      result = route(client, buffer[0, idx], buffer[(idx + 4)..], request_id: SecureRandom.uuid)
+      result = route(client, buffer[0, idx], buffer[(idx + 4)..-1], request_id: SecureRandom.uuid)
       return if result == :subscribed
 
       client.close rescue nil

@@ -47,7 +47,7 @@ class SketchupAddonPreferences(AddonPreferences):
     tcp_port: IntProperty(
         name="TCP Port",
         description="TCP port for live sync connection",
-        default=9876,
+        default=9877,
         min=1,
         max=65535,
     )

@@ -13,7 +13,7 @@ module SketchupLink
   DEFAULT_SOCKET_PATH = default_socket_path.freeze
 
   DEFAULT_USE_TCP = false.freeze
-  DEFAULT_TCP_PORT = 9876.freeze
+  DEFAULT_TCP_PORT = 9877.freeze # 9876 is taken by the su_mcp (SketchUp MCP Server) extension
   EVT_TRANSACTION_COMMIT = 'transaction.commit'.freeze
   EVT_TRANSACTION_UNDO   = 'transaction.undo'.freeze
   EVT_TRANSACTION_REDO   = 'transaction.redo'.freeze

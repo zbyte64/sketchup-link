@@ -172,12 +172,12 @@ def handle_client(client)
   elsif method == 'POST' && path.start_with?('/control/')
     # Extract the body after headers
     body_start = buf.index("\r\n\r\n")
-    body_json = body_start ? buf[(body_start + 4)..] : ''
+    body_json = body_start ? buf[(body_start + 4)..-1] : ''
     handle_control(client, path, body_json)
   elsif method == 'POST' && path_no_query == '/log'
     # Extract body and log to stderr for test diagnosis
     body_start = buf.index("\r\n\r\n")
-    body_json = body_start ? buf[(body_start + 4)..] : ''
+    body_json = body_start ? buf[(body_start + 4)..-1] : ''
     log_entry = begin
       JSON.parse(body_json)
     rescue JSON::ParserError

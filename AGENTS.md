@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-SketchUp Link is a dual-language live-sync system between SketchUp and Blender. A Ruby plugin running inside SketchUp acts as an HTTP server (TCP on `127.0.0.1`-reachable port 9876 by default; a Unix domain socket is optional), streaming model snapshots and change events. A Python Blender addon connects to that server to import the active SketchUp model live into Blender.
+SketchUp Link is a dual-language live-sync system between SketchUp and Blender. A Ruby plugin running inside SketchUp acts as an HTTP server (TCP on `127.0.0.1`-reachable port 9877 by default; a Unix domain socket is optional), streaming model snapshots and change events. A Python Blender addon connects to that server to import the active SketchUp model live into Blender.
 
 The Blender addon (`blender_plugin/`) is self-contained: it includes `SceneImporter.load()` — the shared import codepath — plus duck-typed JSON adapters (`live_adapter.py`) that present the JSON socket response with the same interface as the Cython SLAPI bindings, and optional Cython/Rust bindings for native `.skp` file import via the SketchUp SDK.
 
@@ -212,7 +212,7 @@ make build-rust
 
 **Transport:** HTTP/1.1 over AF_UNIX (`http.client.HTTPConnection` subclass overriding `connect()`). No external HTTP libraries used on either side.
 
-**Transport defaults (Unix-first with TCP fallback):** `sketchup_link/constants.rb` sets `DEFAULT_USE_TCP = false`, so the SketchUp server prefers the Unix domain socket. If binding the Unix socket fails, `Server#start` logs a warning and binds TCP on `DEFAULT_TCP_PORT = 9876` (`0.0.0.0`) instead. The `use_tcp` preference (or `SERVER_MODE`/`TCP_PORT` env vars) can still force a mode explicitly. On the Blender side, `connection_mode` defaults to `UNIX`; `fetch_model_json` tries the Unix socket first and, if the connection fails and `tcp_host` (`127.0.0.1`) / `tcp_port` (9876) are configured, retries over TCP and logs which transport succeeded.
+**Transport defaults (Unix-first with TCP fallback):** `sketchup_link/constants.rb` sets `DEFAULT_USE_TCP = false`, so the SketchUp server prefers the Unix domain socket. If binding the Unix socket fails, `Server#start` logs a warning and binds TCP on `DEFAULT_TCP_PORT = 9877` (`0.0.0.0`) instead. The `use_tcp` preference (or `SERVER_MODE`/`TCP_PORT` env vars) can still force a mode explicitly. On the Blender side, `connection_mode` defaults to `UNIX`; `fetch_model_json` tries the Unix socket first and, if the connection fails and `tcp_host` (`127.0.0.1`) / `tcp_port` (9877) are configured, retries over TCP and logs which transport succeeded.
 
 **Socket path (Unix mode only):** Platform-aware via `ENV['TEMP']` (Windows) / `ENV['TMP']` / `/tmp` (Unix). Test suite uses `-test.sock` suffix to avoid collisions.
 
